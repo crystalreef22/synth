@@ -1,22 +1,22 @@
 
-// Thanks to Embedded Artistry for the circular buffer tutorial
+// Thanks to Embedded Artistry for the circular buffer tutorial, in addition to StackOverflow and ChatGPT for help
 // Find the tutorial here: https://embeddedartistry.com/blog/2017/05/17/creating-a-circular-buffer-in-c-and-c/
 
-#include <memory>
+#include <array>
 #include <condition_variable>
 #include <mutex>
 #include <optional>
 
-template <class T>
+template <class T, size_t TElemCount>
 class circular_buffer {
 public:
-	explicit circular_buffer(size_t size) :
-		buf_(std::unique_ptr<T[]>(new T[size])),
-		max_size_(size)
-	{
-		//empty constructor
-	}
+	explicit circular_buffer() = default;
 
+	/**
+	// ^ place a slash here to enable put()
+	
+	// We want to wait until there is space in the buffer, rather than overwrite,
+	// since this is an audio application. See wait_put
 	void put(T item){
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -24,13 +24,15 @@ public:
 
 		if (full_) {
 			// Overwrite oldest value implementation
-			tail_ = (tail_ + 1) % max_size_;
+			tail_ = (tail_ + 1) % TElemCount;
 		}
 
-		head_ = (head_ + 1) % max_size_;
+		head_ = (head_ + 1) % TElemCount;
 
 		full_ = head_ == tail_;
 	}
+	// */
+	
 
 	void wait_put(T item){ // Not in tutorial. Got idea from ChatGPT and Stack Overflow
 		std::unique_lock<std::mutex> lock(mutex_);
@@ -39,7 +41,7 @@ public:
 
 		buf_[head_] = item;
 
-		head_ = (head_ + 1) % max_size_;
+		head_ = (head_ + 1) % TElemCount;
 
 		full_ = head_ == tail_;
 	}
@@ -54,10 +56,32 @@ public:
 		// Read data and advance the tail
 		auto val = buf_[tail_];
 		full_ = false;
-		tail_ = (tail_+1) % max_size_;
+		tail_ = (tail_+1) % TElemCount;
 
 		return val;
 	}
+
+	/*
+	//Not implemented, not in tutorial, not needed.
+	std::optional<T> peek(size_t look_ahead_counter){
+		// Thread safe if 1 producer/consumer
+		// Adapted from github of C version
+		// Do not add a lock since it is not recursive and size() is called
+
+		if(empty() || look_ahead_counter > size()){
+			return std::nullopt;
+		}
+		
+		// Read data and advance the tail
+		size_t pos = buf
+		auto val = buf_[tail_];
+		full_ = false;
+		tail_ = (tail_+1) % TElemCount;
+
+		return val;
+	}
+	*/
+
 
 	void reset() {
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -73,28 +97,29 @@ public:
 	}
 
 	size_t capacity() const {
-		return max_size_;
+		return TElemCount;
 	}
 	size_t size() const {
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		if (!full_) {
 			if (head_ >= tail_) {
 				return head_ - tail_;
 			}
 			// else go around the circle once
-			return max_size_ + head_ - tail_;
+			return TElemCount + head_ - tail_;
 		} // else it is full, so return size
 
-		return max_size_;
+		return TElemCount;
 	}
 
 
 
 private:
-	std::mutex mutex_;
+	mutable std::mutex mutex_;
 	std::condition_variable not_full;
-	std::unique_ptr<T[]> buf_;
+	std::array<T, TElemCount> buf_;
 	size_t head_ = 0;
 	size_t tail_ = 0;
-	const size_t max_size_;
-	bool full_ = 0;
+	bool full_ = false;
 };
