@@ -2,11 +2,12 @@
 #include <math.h>
 #include <portaudio.h>
 #include "circular_buffer.hpp"
+#include <optional>
 
 #define SAMPLE_RATE   (44100)
+#define RINGBUFFER_SIZE	(2048)
 
 
-circular_buffer<float, 2048> sharedBuffer;
 
 
 /* This routine will be called by the PortAudio engine when audio is needed.
@@ -19,12 +20,13 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
                            PaStreamCallbackFlags statusFlags,
                            void *userData )
 {
+    circular_buffer<float,RINGBUFFER_SIZE> *sharedBuffer = static_cast<circular_buffer<float, RINGBUFFER_SIZE>*>(userData); 
     float *out = static_cast<float*>(outputBuffer);
     (void) inputBuffer; /* Prevent unused variable warning. */
     
     for(size_t i=0; i<framesPerBuffer; i++ )
     {
-		float v = sharedBuffer.get().value_or(0.0f);
+		float v = sharedBuffer->get().value_or(0.0f);
         *out++ = v;
         *out++ = v;
     }
@@ -36,6 +38,8 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
 int main(){
 	PaStream *stream;
 	PaError err;
+
+	circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
 
 	err = Pa_Initialize();
 	if( err != paNoError ) goto error;
@@ -54,7 +58,7 @@ int main(){
                                                    tells PortAudio to pick the best,
                                                    possibly changing, buffer size.*/
                                 patestCallback, /* this is your callback function */
-                                &data ); /*This is a pointer that will be passed to
+                                &sharedBuffer ); /*This is a pointer that will be passed to
                                                    your callback*/
     if( err != paNoError ) goto error;
 
@@ -62,9 +66,16 @@ int main(){
 	if( err != paNoError ) goto error;
 
 
-	thing = 0;
-	for(;;){
-		sharedBuffer.wait_put()
+	{
+		float thing = 0.0f;
+		for(int i=0;i<SAMPLE_RATE*6;i++){
+			sharedBuffer.wait_put(thing);
+			thing += (float)i / (SAMPLE_RATE*6)*0.3;
+			if(thing >= 1.0f) thing-=2.0f;
+
+			if((i%1000)==0)
+				std::cout << i << "  |  " << sharedBuffer.size() << std::endl;
+		}
 	}
 
     err = Pa_StopStream( stream );
