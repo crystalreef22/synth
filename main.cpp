@@ -50,7 +50,8 @@ int main(){
                                 2,          /* stereo output */
                                 paFloat32,  /* 32 bit floating point output */
                                 SAMPLE_RATE,
-                                256,        /* frames per buffer, i.e. the number
+                                paFramesPerBufferUnspecified,
+												/* frames per buffer default:256, i.e. the number
                                                    of sample frames that PortAudio will
                                                    request from the callback. Many apps
                                                    may want to use
