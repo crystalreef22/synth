@@ -1,16 +1,14 @@
 #include <iostream>
 #include <math.h>
 #include <portaudio.h>
-#define NUM_SECONDS   (4)
+#include "circular_buffer.hpp"
+
 #define SAMPLE_RATE   (44100)
 
-struct paTestData
-{
-	float left_phase;
-	float right_phase;
-};
 
-static paTestData data;
+circular_buffer<float, 2048> sharedBuffer;
+
+
 /* This routine will be called by the PortAudio engine when audio is needed.
  * It may called at interrupt level on some machines so don't do anything
  * that could mess up the system like calling malloc() or free().
@@ -21,22 +19,14 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
                            PaStreamCallbackFlags statusFlags,
                            void *userData )
 {
-    /* Cast data passed through stream to our structure. */
-    paTestData *data = static_cast<paTestData*>(userData); 
     float *out = static_cast<float*>(outputBuffer);
     (void) inputBuffer; /* Prevent unused variable warning. */
     
     for(size_t i=0; i<framesPerBuffer; i++ )
     {
-        *out++ = data->left_phase;  /* left */
-        *out++ = data->right_phase;  /* right */
-        /* Generate simple sawtooth phaser that ranges between -1.0 and 1.0. */
-        data->left_phase += 0.01f;
-        /* When signal reaches top, drop back down. */
-        if( data->left_phase >= 1.0f ) data->left_phase -= 2.0f;
-        /* higher pitch so we can distinguish left and right. */
-        data->right_phase += 0.03f;
-        if( data->right_phase >= 1.0f ) data->right_phase -= 2.0f;
+		float v = sharedBuffer.get().value_or(0.0f);
+        *out++ = v;
+        *out++ = v;
     }
     return 0;
 } //literally copied and pasted
@@ -72,8 +62,10 @@ int main(){
 	if( err != paNoError ) goto error;
 
 
-	/* Sleep for several seconds. */
-    Pa_Sleep(NUM_SECONDS*1000);
+	thing = 0;
+	for(;;){
+		sharedBuffer.wait_put()
+	}
 
     err = Pa_StopStream( stream );
     if( err != paNoError ) goto error;
