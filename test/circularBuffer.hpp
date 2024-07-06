@@ -47,7 +47,7 @@ public:
 	}
 
 	std::optional<T> get(){
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::mutex> lock(mutex_);
 
 		if(empty()){
 			return std::nullopt;
@@ -57,6 +57,9 @@ public:
 		auto val = buf_[tail_];
 		full_ = false;
 		tail_ = (tail_+1) % TElemCount;
+		
+		lock.unlock();
+		not_full.notify_one();
 
 		return val;
 	}
@@ -84,9 +87,11 @@ public:
 
 
 	void reset() {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::mutex> lock(mutex_);
 		head_ = tail_;
 		full_ = false;
+		lock.unlock();
+		not_full.notify_one();
 	}
 
 	bool empty() const {
