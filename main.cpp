@@ -5,7 +5,7 @@
 #include <optional>
 
 #define SAMPLE_RATE   (44100)
-#define RINGBUFFER_SIZE	(2048)
+#define RINGBUFFER_SIZE	(1024)
 
 
 
@@ -13,14 +13,16 @@
 /* This routine will be called by the PortAudio engine when audio is needed.
  * It may called at interrupt level on some machines so don't do anything
  * that could mess up the system like calling malloc() or free().
+ *
+ * Read from circular buffer when more data is needed
 */ 
-static int patestCallback( const void *inputBuffer, void *outputBuffer,
+static int paCallback( const void *inputBuffer, void *outputBuffer,
                            unsigned long framesPerBuffer,
                            const PaStreamCallbackTimeInfo* timeInfo,
                            PaStreamCallbackFlags statusFlags,
                            void *userData )
 {
-    circular_buffer<float,RINGBUFFER_SIZE> *sharedBuffer = static_cast<circular_buffer<float, RINGBUFFER_SIZE>*>(userData); 
+    shared_circular_buffer<float,RINGBUFFER_SIZE> *sharedBuffer = static_cast<shared_circular_buffer<float, RINGBUFFER_SIZE>*>(userData); 
     float *out = static_cast<float*>(outputBuffer);
     (void) inputBuffer; /* Prevent unused variable warning. */
     
@@ -31,15 +33,21 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
         *out++ = v;
     }
     return 0;
-} //literally copied and pasted
+}
 
+
+// Generate LPC for to read
+
+float saw(float x, float period) {
+	return std::fmod(2*(x*(period/SAMPLE_RATE)), 2.0f)-1.0f;
+}
 
 
 int main(){
 	PaStream *stream;
 	PaError err;
 
-	circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
+	shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
 
 	err = Pa_Initialize();
 	if( err != paNoError ) goto error;
@@ -58,7 +66,7 @@ int main(){
                                                    paFramesPerBufferUnspecified, which
                                                    tells PortAudio to pick the best,
                                                    possibly changing, buffer size.*/
-                                patestCallback, /* this is your callback function */
+                                paCallback, /* this is your callback function */
                                 &sharedBuffer ); /*This is a pointer that will be passed to
                                                    your callback*/
     if( err != paNoError ) goto error;
@@ -68,16 +76,13 @@ int main(){
 
 
 	{
-		float thing = 0.0f;
-		for(int i=0;i<SAMPLE_RATE*6;i++){
-			sharedBuffer.wait_put(thing);
-			thing += (float)i / (SAMPLE_RATE*6)*0.3;
-			if(thing >= 1.0f) thing-=2.0f;
-
-			if((i%1000)==0)
-				std::cout << i << "  |  " << sharedBuffer.size() << std::endl;
+		for(int i=0;i<SAMPLE_RATE*2;i++){
+			float s = saw(i, 440)*0.2;
+			sharedBuffer.wait_put(s);
 		}
 	}
+
+	//synth();
 
     err = Pa_StopStream( stream );
     if( err != paNoError ) goto error;

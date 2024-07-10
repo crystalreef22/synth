@@ -8,9 +8,9 @@
 #include <optional>
 
 template <class T, size_t TElemCount>
-class circular_buffer {
+class shared_circular_buffer {
 public:
-	explicit circular_buffer() = default;
+	explicit shared_circular_buffer() = default;
 
 	/**
 	// ^ place a slash here to enable put()
@@ -128,3 +128,4 @@ private:
 	size_t tail_ = 0;
 	bool full_ = false;
 };
+
