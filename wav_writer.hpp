@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <vector>
+#include <cstring>
 
 class wav_writer{
 public:
@@ -15,7 +16,7 @@ public:
         chunk_t wav_chunk;
         
         std::memcpy(wav_header.fileTypeID, "RIFF", sizeof(wav_header.fileTypeID));
-        std::memcpy(wav_header.format, "WAVE", sizeof(wav_header.fileTypeID));
+        std::memcpy(wav_header.format, "WAVE", sizeof(wav_header.format));
         std::memcpy(wav_header.formatBlockID, "fmt ",sizeof(wav_header.formatBlockID));
         wav_header.audioFormat=1;
         wav_header.nbrChannels=1;
@@ -30,15 +31,16 @@ public:
         wav_header.fileSize = 44-8 + data.size()*16/8;
 
 
-        unsigned long longMax = -1;
+        unsigned short shortMax = -1;
 
         std::ofstream fs (fileName,std::ios::binary); 
         if(!fs.is_open()) return false;
 
         fs.write(reinterpret_cast<const char*>(&wav_header), sizeof(wav_header));
+        fs.write(reinterpret_cast<const char*>(&wav_chunk), sizeof(wav_chunk));
         for (size_t i = 0; i < data.size(); i++){
             float normalizedFloat = (data[i] + 1.0f)/2.0f;
-            unsigned long p = normalizedFloat * longMax;
+            unsigned short p = normalizedFloat * shortMax;
             fs.write(reinterpret_cast<const char*>(&p), sizeof(p));
         }
         fs.close();
@@ -49,15 +51,15 @@ public:
 private:
     struct wav_header_t{
         char fileTypeID[4];
-        unsigned long fileSize; //overall file size minus 8 bytes
+        unsigned int fileSize; //overall file size minus 8 bytes
         char format[4];
 
         char formatBlockID[4];
-        unsigned long fmtBlockSize; // chunk size minus 8 bytes: 16 [+ sizeof(wExtraFormatBytes) + wExtraFormatBytes]
+        unsigned int fmtBlockSize; // chunk size minus 8 bytes: 16 [+ sizeof(wExtraFormatBytes) + wExtraFormatBytes]
         unsigned short audioFormat; //1: PCM integer, 3: IEEE 754 float
         unsigned short nbrChannels;
-        unsigned long sampleRate;
-        unsigned long bytesPerSec;
+        unsigned int sampleRate;
+        unsigned int bytesPerSec;
         unsigned short bytesPerBlock;
         unsigned short bitsPerSample;
         // extra format bytes
@@ -65,7 +67,7 @@ private:
 
     struct chunk_t {
         char dataBlockID[4]; //"data"
-        unsigned long dataSize; // size of remaining data
+        unsigned int dataSize; // size of remaining data
     };
 
 };
