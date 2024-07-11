@@ -1,3 +1,5 @@
+#ifndef CIRCULAR_BUFFER_HPP
+#define CIRCULAR_BUFFER_HPP
 
 // Thanks to Embedded Artistry for the circular buffer tutorial, in addition to StackOverflow and ChatGPT for help
 // Find the tutorial here: https://embeddedartistry.com/blog/2017/05/17/creating-a-circular-buffer-in-c-and-c/
@@ -129,3 +131,4 @@ private:
 	bool full_ = false;
 };
 
+#endif

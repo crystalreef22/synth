@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FIR_HPP
+#define FIR_HPP
 
 #include <vector>
 //adapted from https://ptolemy.berkeley.edu/eecs20/week12/implementation.html
@@ -30,4 +31,6 @@ private:
 	size_t count = 0;
 	size_t filterLength;
 };
+
+#endif
 
