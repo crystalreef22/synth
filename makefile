@@ -1,5 +1,5 @@
 .PHONY: run
 
 run:
-	bash compile.sh
+    bash compile.sh
 

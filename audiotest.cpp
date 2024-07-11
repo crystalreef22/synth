@@ -6,8 +6,8 @@
 
 struct paTestData
 {
-	float left_phase;
-	float right_phase;
+    float left_phase;
+    float right_phase;
 };
 
 static paTestData data;
@@ -44,13 +44,13 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
 
 
 int main(){
-	PaStream *stream;
-	PaError err;
+    PaStream *stream;
+    PaError err;
 
-	err = Pa_Initialize();
-	if( err != paNoError ) goto error;
+    err = Pa_Initialize();
+    if( err != paNoError ) goto error;
 
-	    /* Open an audio I/O stream. */
+        /* Open an audio I/O stream. */
     err = Pa_OpenDefaultStream( &stream,
                                 0,          /* no input channels */
                                 2,          /* stereo output */
@@ -68,11 +68,11 @@ int main(){
                                                    your callback*/
     if( err != paNoError ) goto error;
 
-	err = Pa_StartStream( stream );
-	if( err != paNoError ) goto error;
+    err = Pa_StartStream( stream );
+    if( err != paNoError ) goto error;
 
 
-	/* Sleep for several seconds. */
+    /* Sleep for several seconds. */
     Pa_Sleep(NUM_SECONDS*1000);
 
     err = Pa_StopStream( stream );
@@ -84,9 +84,9 @@ int main(){
     return err;
 
 error:
-	Pa_Terminate();
-	std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
-	std::cerr << "Error number: " << err << std::endl;
+    Pa_Terminate();
+    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
+    std::cerr << "Error number: " << err << std::endl;
     std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
     return err;
 }

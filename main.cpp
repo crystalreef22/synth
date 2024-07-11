@@ -6,7 +6,7 @@
 #include "fir.hpp"
 
 #define SAMPLE_RATE   (44100)
-#define RINGBUFFER_SIZE	(1024)
+#define RINGBUFFER_SIZE    (1024)
 
 
 
@@ -29,7 +29,7 @@ static int paCallback( const void *inputBuffer, void *outputBuffer,
     
     for(size_t i=0; i<framesPerBuffer; i++ )
     {
-		float v = sharedBuffer->get().value_or(0.0f);
+        float v = sharedBuffer->get().value_or(0.0f);
         *out++ = v;
         *out++ = v;
     }
@@ -40,27 +40,27 @@ static int paCallback( const void *inputBuffer, void *outputBuffer,
 // Generate LPC for to read
 
 float saw(float x, float period) {
-	return std::fmod(2*(x*(period/SAMPLE_RATE)), 2.0f)-1.0f;
+    return std::fmod(2*(x*(period/SAMPLE_RATE)), 2.0f)-1.0f;
 }
 
 
 int main(){
-	PaStream *stream;
-	PaError err;
+    PaStream *stream;
+    PaError err;
 
-	shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
+    shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
 
-	err = Pa_Initialize();
-	if( err != paNoError ) goto error;
+    err = Pa_Initialize();
+    if( err != paNoError ) goto error;
 
-	    /* Open an audio I/O stream. */
+        /* Open an audio I/O stream. */
     err = Pa_OpenDefaultStream( &stream,
                                 0,          /* no input channels */
                                 2,          /* stereo output */
                                 paFloat32,  /* 32 bit floating point output */
                                 SAMPLE_RATE,
                                 paFramesPerBufferUnspecified,
-												/* frames per buffer default:256, i.e. the number
+                                                /* frames per buffer default:256, i.e. the number
                                                    of sample frames that PortAudio will
                                                    request from the callback. Many apps
                                                    may want to use
@@ -72,23 +72,23 @@ int main(){
                                                    your callback*/
     if( err != paNoError ) goto error;
 
-	err = Pa_StartStream( stream );
-	if( err != paNoError ) goto error;
+    err = Pa_StartStream( stream );
+    if( err != paNoError ) goto error;
 
 
-	{
-		FIRFilter reverb = FIRFilter({0.04,0.06,0.08,0.12,0.2,0.2,0.12,0.08,0.06,0.04});
-		for(int i=0;i<SAMPLE_RATE*2;i++){
-			float s = saw(i,440)*0.3;
-			sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
-		}
-		for(int i=0;i<SAMPLE_RATE*2;i++){
-			float s = reverb.getOutputSample(saw(i,440)*0.3);
-			sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
-		}
-	}
+    {
+        FIRFilter reverb = FIRFilter({0.04,0.06,0.08,0.12,0.2,0.2,0.12,0.08,0.06,0.04});
+        for(int i=0;i<SAMPLE_RATE*2;i++){
+            float s = saw(i,440)*0.3;
+            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
+        }
+        for(int i=0;i<SAMPLE_RATE*2;i++){
+            float s = reverb.getOutputSample(saw(i,440)*0.3);
+            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
+        }
+    }
 
-	//synth();
+    //synth();
 
     err = Pa_StopStream( stream );
     if( err != paNoError ) goto error;
@@ -99,9 +99,9 @@ int main(){
     return err;
 
 error:
-	Pa_Terminate();
-	std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
-	std::cerr << "Error number: " << err << std::endl;
+    Pa_Terminate();
+    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
+    std::cerr << "Error number: " << err << std::endl;
     std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
     return err;
 }
