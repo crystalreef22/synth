@@ -4,12 +4,11 @@
 #include <fstream>
 #include <vector>
 #include <cstring>
+#include <optional>
 
 class wav_writer{
 public:
     wav_writer(){}; //constructor
-
-    std::vector<float> wavToFloat();
 
     bool writeToWavPCMMonoCD(const std::string& fileName, const std::vector<float>& data){
         wav_header_t wav_header;
@@ -48,7 +47,38 @@ public:
         return true;
     }
 
+    std::vector<float> readWavPCMMonoCDToFloat(const std::string& fileName){
+        // Very dirty, but should work good enough for my needs
+        wav_header_t wav_header;
+        chunk_t chunk_header;
+
+
+        std::ifstream fs (fileName, std::ios::binary);
+        if(!fs.is_open()) return std::vector<float>();
+        
+        fs.read(reinterpret_cast<char*>(&wav_header), sizeof(wav_header));
+        fs.read(reinterpret_cast<char*>(&chunk_header), sizeof(chunk_header));
+        // this implementation is very disgusting
+
+        std::vector<float> data(chunk_header.dataSize/2);
+        unsigned short shortMax = -1;
+        for (size_t i = 0; i < chunk_header.dataSize/2; i++){
+            unsigned short p;
+            fs.read(reinterpret_cast<char*>(&p), sizeof(p));
+            float sample=p/(shortMax/2.0f);
+            sample = sample - 1;
+            data[i] = sample;
+        }
+
+        fs.close();
+
+
+
+        return data;
+    }
+
 private:
+    #pragma pack(push, 1) // do not pack structs, so that binary data can be read and written. Probably bad practice
     struct wav_header_t{
         char fileTypeID[4];
         unsigned int fileSize; //overall file size minus 8 bytes
@@ -69,6 +99,7 @@ private:
         char dataBlockID[4]; //"data"
         unsigned int dataSize; // size of remaining data
     };
+    #pragma pack(pop)
 
 };
 #endif
