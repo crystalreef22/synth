@@ -78,12 +78,17 @@ int main(){
 
     {
         FIRFilter reverb = FIRFilter({0.04,0.06,0.08,0.12,0.2,0.2,0.12,0.08,0.06,0.04});
+        IIRFilter badthing = IIRFilter({-0.97});
         for(int i=0;i<SAMPLE_RATE*2;i++){
             float s = saw(i,440)*0.3;
             sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
         }
-        for(int i=0;i<SAMPLE_RATE*2;i++){
+        for(int i=0;i<SAMPLE_RATE*0;i++){
             float s = reverb.getOutputSample(saw(i,440)*0.3);
+            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
+        }
+        for(int i=0;i<SAMPLE_RATE*2;i++){
+            float s = badthing.getOutputSample(saw(i,440)*0.3);
             sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
         }
     }
