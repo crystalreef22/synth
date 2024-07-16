@@ -43,7 +43,7 @@ public:
 
         buf_[head_] = item;
 
-        head_ = (head_ + 1) % TElemCount;
+        ++head_ %= TElemCount; //head_ = (head_ + 1) % TElemCount;
 
         full_ = head_ == tail_;
     }
@@ -58,7 +58,8 @@ public:
         // Read data and advance the tail
         auto val = buf_[tail_];
         full_ = false;
-        tail_ = (tail_+1) % TElemCount;
+        // tail_ = (tail_+1) % TElemCount;
+        ++tail_ %= TElemCount;
         
         lock.unlock();
         not_full.notify_one();
