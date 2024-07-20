@@ -50,13 +50,15 @@ float genBuzz(float x, float noiseAmplitude, float sawAmplitude, float period) {
 
 class synth {
 public:
-    synth(const std::vector<float>& coefficients)
+    synth(const std::vector<float>& coefficients, float gain)
         : coefficients(coefficients),
-        delayLine(coefficients.size(), 0)
+        delayLine(coefficients.size(), 0),
+        gain{gain}
     {}
 
-    void setCoefficients(const std::vector<float>& coeff){
+    void setCoefficients(std::vector<float> coeff, float g){
         coefficients = coeff;
+        gain = g;
     }
 
 
@@ -68,26 +70,40 @@ public:
         // ‣ y[] = output signal, e[] = excitation signal (buzz, also called predictor error signal), b[] = the coefficients for the given frame
         // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
 
-        float output = genBuzz(buzzI, 0.2, 0.3, 440);
+        float buzz = genBuzz(buzzI, 0.1, 0.7, 150);
         size_t index = count + 1;
+        float sum = 0;
         for(size_t i=0; i<coefficients.size();i++){
-            output -= coefficients[i] * delayLine[--index];
+            sum += coefficients[i] * delayLine[--index];
             if (index == 0) index = coefficients.size();
         }
-        delayLine[count] = output;
+        delayLine[count] = buzz - sum * gain;
         if (++count >= coefficients.size()) count = 0;
         
-        return(std::max(-1.0f,std::min(output,1.0f)));
+        
+        return(std::max(-1.0f,std::min(buzz - sum,1.0f)));
     }
 
 private:
     std::vector<float> coefficients;
     std::vector<float> delayLine;
     size_t count = 0;
+    float gain;
 };
 
 
 int main(){
+    // Read LPC
+
+
+
+
+
+
+
+
+    // Init sound
+
     PaStream *stream;
     PaError err;
 
@@ -119,7 +135,11 @@ int main(){
     if( err != paNoError ) goto error;
 
     {
-        synth mySynth({0.7,0.3,0.2,0.1,0});
+        synth mySynth({-1.22735, 0.04589,0.73142,-0.82538,0.285,0.5619,-0.7926,0.2058,0.58067,-0.64337,0.03746,0.3609,-0.3376,0.1492,0.151449,-0.24405}, 5.292588e-5);
+        for(size_t i=0;i<SAMPLE_RATE*2;i++){
+            sharedBuffer.wait_put(mySynth.getOutputSample(i));
+        }
+        mySynth.setCoefficients({0}, 1);
         for(size_t i=0;i<SAMPLE_RATE*2;i++){
             sharedBuffer.wait_put(mySynth.getOutputSample(i));
         }
