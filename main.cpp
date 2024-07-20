@@ -3,7 +3,8 @@
 #include <portaudio.h>
 #include "circular_buffer.hpp"
 #include <optional>
-#include "fir.hpp"
+#include <vector>
+// #include "fir.hpp"
 
 #define SAMPLE_RATE   (44100)
 #define RINGBUFFER_SIZE    (1024)
@@ -39,9 +40,51 @@ static int paCallback( const void *inputBuffer, void *outputBuffer,
 
 // Generate LPC for to read
 
-float saw(float x, float period) {
-    return std::fmod(2*(x*(period/SAMPLE_RATE)), 2.0f)-1.0f;
+float genSaw(float x, float amplitude, float period) {
+    return (std::fmod(2*(x*(period/SAMPLE_RATE)), 2.0f)-1.0f) * amplitude * 0.5; // this WILL be aliasing. Not much we can do
 }
+
+float genBuzz(float x, float noiseAmplitude, float sawAmplitude, float period) {
+    return noiseAmplitude * (drand48() - 0.5) + genSaw(x, sawAmplitude, period);
+}
+
+class synth {
+public:
+    synth(const std::vector<float>& coefficients)
+        : coefficients(coefficients),
+        delayLine(coefficients.size(), 0)
+    {}
+
+    void setCoefficients(const std::vector<float>& coeff){
+        coefficients = coeff;
+    }
+
+
+    float getOutputSample(size_t buzzI){
+        
+        // @Bisqwit@youtube.com
+        // 5 years ago (edited)
+        // This is LPC (Linear Predictive Coding): yₙ = eₙ − ∑(ₖ₌₁..ₚ) (bₖ yₙ₋ₖ)  where
+        // ‣ y[] = output signal, e[] = excitation signal (buzz, also called predictor error signal), b[] = the coefficients for the given frame
+        // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
+
+        float output = genBuzz(buzzI, 0.2, 0.3, 440);
+        size_t index = count + 1;
+        for(size_t i=0; i<coefficients.size();i++){
+            output -= coefficients[i] * delayLine[--index];
+            if (index == 0) index = coefficients.size();
+        }
+        delayLine[count] = output;
+        if (++count >= coefficients.size()) count = 0;
+        
+        return(std::max(-1.0f,std::min(output,1.0f)));
+    }
+
+private:
+    std::vector<float> coefficients;
+    std::vector<float> delayLine;
+    size_t count = 0;
+};
 
 
 int main(){
@@ -75,25 +118,12 @@ int main(){
     err = Pa_StartStream( stream );
     if( err != paNoError ) goto error;
 
-
     {
-        FIRFilter reverb = FIRFilter({0.04,0.06,0.08,0.12,0.2,0.2,0.12,0.08,0.06,0.04});
-        IIRFilter badthing = IIRFilter({-0.97});
-        for(int i=0;i<SAMPLE_RATE*2;i++){
-            float s = saw(i,440)*0.3;
-            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
-        }
-        for(int i=0;i<SAMPLE_RATE*0;i++){
-            float s = reverb.getOutputSample(saw(i,440)*0.3);
-            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
-        }
-        for(int i=0;i<SAMPLE_RATE*2;i++){
-            float s = badthing.getOutputSample(saw(i,440)*0.3);
-            sharedBuffer.wait_put(std::max(-1.0f,std::min(s,1.0f)));
+        synth mySynth({0.7,0.3,0.2,0.1,0});
+        for(size_t i=0;i<SAMPLE_RATE*2;i++){
+            sharedBuffer.wait_put(mySynth.getOutputSample(i));
         }
     }
-
-    //synth();
 
     err = Pa_StopStream( stream );
     if( err != paNoError ) goto error;
