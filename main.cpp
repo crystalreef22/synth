@@ -70,18 +70,21 @@ public:
         // ‣ y[] = output signal, e[] = excitation signal (buzz, also called predictor error signal), b[] = the coefficients for the given frame
         // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
 
-        float buzz = genBuzz(buzzI, 0.1, 0.7, 150);
-        size_t index = count + 1;
-        float sum = 0;
+        float output = genBuzz(buzzI, 0.1, 0.4, 150);
+        size_t index = count + 1 ;// + 1;
+        if (index == 0) index = coefficients.size();
+        if (++count >= coefficients.size()) count = 0;
         for(size_t i=0; i<coefficients.size();i++){
-            sum += coefficients[i] * delayLine[--index];
+            output -= coefficients[i] * delayLine[--index];
+            std::cout << index << std::endl;
             if (index == 0) index = coefficients.size();
         }
-        delayLine[count] = buzz - sum * gain;
-        if (++count >= coefficients.size()) count = 0;
+        delayLine[count] = output ;
+        std::cout << "                 " <<  count << std::endl;
         
         
-        return(std::max(-1.0f,std::min(buzz - sum,1.0f)));
+        
+        return(std::max(-1.0f,std::min(output * sqrt(gain),1.0f)));
     }
 
 private:
@@ -135,7 +138,8 @@ int main(){
     if( err != paNoError ) goto error;
 
     {
-        synth mySynth({-1.22735, 0.04589,0.73142,-0.82538,0.285,0.5619,-0.7926,0.2058,0.58067,-0.64337,0.03746,0.3609,-0.3376,0.1492,0.151449,-0.24405}, 5.292588e-5);
+        synth mySynth({-0.8579094422019475,-0.9277631143195522,0.804326386102418,0.26789408269619314,-0.39655431995016505,0.40583070034300345,-0.04803689569700615,-0.7224031368285665,0.3706332655071031,0.5274388251363206,-0.5919288151596237,-0.2548778925565867,0.5521411691507471,0.1196527490841037,-0.26917557222963295,0.07046663444708721},0.00034088200960689826);
+
         for(size_t i=0;i<SAMPLE_RATE*2;i++){
             sharedBuffer.wait_put(mySynth.getOutputSample(i));
         }
