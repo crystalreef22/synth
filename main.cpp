@@ -70,17 +70,14 @@ public:
         // ‣ y[] = output signal, e[] = excitation signal (buzz, also called predictor error signal), b[] = the coefficients for the given frame
         // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
 
+        size_t cSize = coefficients.size();
+
         float output = genBuzz(buzzI, 0.1, 0.4, 150);
-        size_t index = count + 1 ;// + 1;
-        if (index == 0) index = coefficients.size();
-        if (++count >= coefficients.size()) count = 0;
-        for(size_t i=0; i<coefficients.size();i++){
-            output -= coefficients[i] * delayLine[--index];
-            std::cout << index << std::endl;
-            if (index == 0) index = coefficients.size();
+        for(size_t i=0; i<cSize;i++){
+            output -= coefficients[i] * delayLine[(cSize - i + count) % cSize];
         }
-        delayLine[count] = output ;
-        std::cout << "                 " <<  count << std::endl;
+        if (++count >= cSize) count = 0;
+        delayLine[count] = output;
         
         
         
