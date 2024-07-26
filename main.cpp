@@ -79,7 +79,7 @@ public:
 
         size_t cSize = coefficients.size();
 
-        float output = genBuzz(buzzI, 0.1, 0.4, 150);
+        float output = genBuzz(buzzI, 0.1, 0.8, 150);
         for(size_t i=0; i<cSize;i++){
             output -= coefficients[i] * delayLine[(cSize - i + count) % cSize];
         }
@@ -104,7 +104,7 @@ int main(){
     // Read LPC
 
 
-    std::ifstream lpcFile("aeiou.LPC");
+    std::ifstream lpcFile("example_sentence.LPC");
     if (!lpcFile.is_open()){
         std::cerr << "Error opening lpc file" << std::endl;
         return 1;
@@ -123,7 +123,7 @@ int main(){
         return 1;
     }
 
-    float lpcFrameLength{0.02f};
+    float lpcFrameLength{0.02f}; // if not specified
     
     struct frame_t {
         std::vector<float> coefficients;
