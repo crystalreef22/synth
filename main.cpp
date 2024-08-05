@@ -69,7 +69,7 @@ public:
     }
 
 
-    float getOutputSample(size_t buzzI){
+    float getOutputSample(size_t buzzI, float breath = 0.15, float pitch = 150, float buzzGain = 0.9){
         
         // @Bisqwit@youtube.com
         // 5 years ago (edited)
@@ -79,7 +79,7 @@ public:
 
         size_t cSize = coefficients.size();
 
-        float output = genBuzz(buzzI, 0.1, 0.8, 150);
+        float output = genBuzz(buzzI, breath * buzzGain, (1-breath) * buzzGain, pitch);
         for(size_t i=0; i<cSize;i++){
             output -= coefficients[i] * delayLine[(cSize - i + count) % cSize];
         }
@@ -104,7 +104,7 @@ int main(){
     // Read LPC
 
 
-    std::ifstream lpcFile("example_sentence.LPC");
+    std::ifstream lpcFile("batchaduz-48-burg.LPC");
     if (!lpcFile.is_open()){
         std::cerr << "Error opening lpc file" << std::endl;
         return 1;
