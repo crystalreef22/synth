@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "/Users/etn/Programming/synth",
-    "command": "g++ -o a.out main.cpp -I/opt/homebrew/cellar/portaudio/19.7.0/include -L/opt/homebrew/Cellar/portaudio/19.7.0/lib -lportaudio -std=c++20 -Iimgui -Iimgui/backends -Wall",
-    "file": "main.cpp"
-  }
-]

@@ -11,9 +11,11 @@
 #include <cassert>
 // #include "fir.hpp"
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+// #include <GLFW/glfw3.h>
+
+//#include "imgui.h"
+//#include "imgui_impl_glfw.h"
+//#include "imgui_impl_opengl3.h"
 
 #define SAMPLE_RATE   (44100)
 #define RINGBUFFER_SIZE    (1024)
@@ -107,9 +109,6 @@ private:
 int main(){
 
 
-
-
-    goto end; // I am too lazy to create a new c++ program for this, so I am just skipping all of this
     {
     // Read LPC
 
@@ -270,6 +269,4 @@ error:
     std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
     return err;
     }
-end:
-    return 0;
 }
