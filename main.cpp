@@ -11,6 +11,10 @@
 #include <cassert>
 // #include "fir.hpp"
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #define SAMPLE_RATE   (44100)
 #define RINGBUFFER_SIZE    (1024)
 
@@ -55,9 +59,9 @@ float genBuzz(float x, float noiseAmplitude, float sawAmplitude, float period) {
 class synth {
 public:
     synth(size_t coefficientSize)
-        : coefficientSize(coefficientSize),
-        coefficients(coefficientSize, 0),
-        delayLine(coefficientSize, 0)
+        : coefficients(coefficientSize, 0),
+        delayLine(coefficientSize, 0),
+        coefficientSize(coefficientSize)
     {}
 
 
@@ -101,6 +105,12 @@ private:
 
 
 int main(){
+
+
+
+
+    goto end; // I am too lazy to create a new c++ program for this, so I am just skipping all of this
+    {
     // Read LPC
 
 
@@ -259,4 +269,7 @@ error:
     std::cerr << "Error number: " << err << std::endl;
     std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
     return err;
+    }
+end:
+    return 0;
 }
