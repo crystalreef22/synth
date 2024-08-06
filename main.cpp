@@ -11,16 +11,26 @@
 #include <cassert>
 // #include "fir.hpp"
 
-// #include <GLFW/glfw3.h>
+#include <thread>
 
-//#include "imgui.h"
-//#include "imgui_impl_glfw.h"
-//#include "imgui_impl_opengl3.h"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
+#define GL_SILENCE_DEPRECATION
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+#include <GLES2/gl2.h>
+#endif
+
+#include <GLFW/glfw3.h> // Will drag system OpenGL headers
+
+static void glfwErrorCallback(int error, const char* description) {
+    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+}
+
 
 #define SAMPLE_RATE   (44100)
 #define RINGBUFFER_SIZE    (1024)
-
-
 
 
 /* This routine will be called by the PortAudio engine when audio is needed.
@@ -105,11 +115,76 @@ private:
     float gain = 0;
 };
 
+struct frame_t {
+    std::vector<float> coefficients;
+    float gain = 0;
+};
 
-int main(){
+void synthThread(int* returnErr, std::vector<frame_t>* lpcFrames, float lpcFrameLength) {
+    // Init sound
 
+    PaStream *stream;
+    PaError err;
+
+    shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
+
+    err = Pa_Initialize();
+    if( err != paNoError ) goto error;
+
+        /* Open an audio I/O stream. */
+    err = Pa_OpenDefaultStream( &stream,
+                                0,          /* no input channels */
+                                2,          /* stereo output */
+                                paFloat32,  /* 32 bit floating point output */
+                                SAMPLE_RATE,
+                                paFramesPerBufferUnspecified,
+                                                /* frames per buffer default:256, i.e. the number
+                                                   of sample frames that PortAudio will
+                                                   request from the callback. Many apps
+                                                   may want to use
+                                                   paFramesPerBufferUnspecified, which
+                                                   tells PortAudio to pick the best,
+                                                   possibly changing, buffer size.*/
+                                paCallback, /* this is your callback function */
+                                &sharedBuffer ); /*This is a pointer that will be passed to
+                                                   your callback*/
+    if( err != paNoError ) goto error;
+
+    err = Pa_StartStream( stream );
+    if( err != paNoError ) goto error;
 
     {
+        // synth mySynth({-0.8579094422019475,-0.9277631143195522,0.804326386102418,0.26789408269619314,-0.39655431995016505,0.40583070034300345,-0.04803689569700615,-0.7224031368285665,0.3706332655071031,0.5274388251363206,-0.5919288151596237,-0.2548778925565867,0.5521411691507471,0.1196527490841037,-0.26917557222963295,0.07046663444708721},0.00034088200960689826);
+        synth mySynth((*lpcFrames)[0].coefficients.size());
+
+        size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
+        size_t sampleCount = (*lpcFrames).size()*samplesPerFrame;
+        for(size_t i=0;i<sampleCount;i++){
+            frame_t frame = (*lpcFrames)[i/samplesPerFrame];
+            // std::cout << frame.gain << std::endl;
+            mySynth.setCoefficients(frame.coefficients, frame.gain);
+            //std::cout << frame.coefficients[0] << std::endl;
+            sharedBuffer.wait_put(mySynth.getOutputSample(i));
+        }
+    }
+
+    err = Pa_StopStream( stream );
+    if( err != paNoError ) goto error;
+    err = Pa_CloseStream( stream );
+    if( err != paNoError ) goto error;
+    Pa_Terminate();
+    printf("Test finished.\n");
+    *returnErr = err;
+
+error:
+    Pa_Terminate();
+    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
+    std::cerr << "Error number: " << err << std::endl;
+    std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
+    *returnErr =  err;
+}
+
+int main(){
     // Read LPC
 
 
@@ -134,10 +209,6 @@ int main(){
 
     float lpcFrameLength{0.02f}; // if not specified
     
-    struct frame_t {
-        std::vector<float> coefficients;
-        float gain = 0;
-    };
 
     std::vector<frame_t> lpcFrames;
 
@@ -199,74 +270,114 @@ int main(){
         //std::cin.ignore();
     }
 
+    //------------------------------
+    // IMGUI SETUP
+    //------------------------------
+
+
+    glfwSetErrorCallback(glfwErrorCallback);
+    if (!glfwInit())
+        return 1;
+
+
+    // Decide GL+GLSL versions
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+    // GL ES 2.0 + GLSL 100
+    const char* glsl_version = "#version 100";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#elif defined(__APPLE__)
+    // GL 3.2 + GLSL 150
+    const char* glsl_version = "#version 150";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
+#else
+    // GL 3.0 + GLSL 130
+    const char* glsl_version = "#version 130";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
+#endif
+
+    // Create window with graphics context
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    if (window == nullptr)
+        return 1;
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1); // Enable vsync
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+
+
+    int st1err = -1;
+
+    //------------------------------
+    // MAIN LOOP
+    //------------------------------
+
     
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
 
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
+        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+        {
 
-
-
-
-
-    // Init sound
-
-    PaStream *stream;
-    PaError err;
-
-    shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
-
-    err = Pa_Initialize();
-    if( err != paNoError ) goto error;
-
-        /* Open an audio I/O stream. */
-    err = Pa_OpenDefaultStream( &stream,
-                                0,          /* no input channels */
-                                2,          /* stereo output */
-                                paFloat32,  /* 32 bit floating point output */
-                                SAMPLE_RATE,
-                                paFramesPerBufferUnspecified,
-                                                /* frames per buffer default:256, i.e. the number
-                                                   of sample frames that PortAudio will
-                                                   request from the callback. Many apps
-                                                   may want to use
-                                                   paFramesPerBufferUnspecified, which
-                                                   tells PortAudio to pick the best,
-                                                   possibly changing, buffer size.*/
-                                paCallback, /* this is your callback function */
-                                &sharedBuffer ); /*This is a pointer that will be passed to
-                                                   your callback*/
-    if( err != paNoError ) goto error;
-
-    err = Pa_StartStream( stream );
-    if( err != paNoError ) goto error;
-
-    {
-        // synth mySynth({-0.8579094422019475,-0.9277631143195522,0.804326386102418,0.26789408269619314,-0.39655431995016505,0.40583070034300345,-0.04803689569700615,-0.7224031368285665,0.3706332655071031,0.5274388251363206,-0.5919288151596237,-0.2548778925565867,0.5521411691507471,0.1196527490841037,-0.26917557222963295,0.07046663444708721},0.00034088200960689826);
-        synth mySynth(lpcFrames[0].coefficients.size());
-
-        size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
-        size_t sampleCount = lpcFrames.size()*samplesPerFrame;
-        for(size_t i=0;i<sampleCount;i++){
-            frame_t frame = lpcFrames[i/samplesPerFrame];
-            // std::cout << frame.gain << std::endl;
-            mySynth.setCoefficients(frame.coefficients, frame.gain);
-            //std::cout << frame.coefficients[0] << std::endl;
-            sharedBuffer.wait_put(mySynth.getOutputSample(i));
+            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+            if (ImGui::Button("run")) {                          // Buttons return true when clicked (most widgets return true when edited/activated)
+                std::cout << "yay" << std::endl;
+                std::thread st1(synthThread,&st1err, &lpcFrames, lpcFrameLength);
+                st1.detach();
+            }
+            if (ImGui::Button("check error to cout")) {                          // Buttons return true when clicked (most widgets return true when edited/activated)
+                std::cout << st1err << std::endl;
+            }
+            ImGui::End();
         }
+
+        ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(window, &display_w, &display_h);
+        glViewport(0, 0, display_w, display_h);
+        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        glfwSwapBuffers(window);
     }
 
-    err = Pa_StopStream( stream );
-    if( err != paNoError ) goto error;
-    err = Pa_CloseStream( stream );
-    if( err != paNoError ) goto error;
-    Pa_Terminate();
-    printf("Test finished.\n");
-    return err;
 
-error:
-    Pa_Terminate();
-    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
-    std::cerr << "Error number: " << err << std::endl;
-    std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
-    return err;
-    }
+
+
+    //------------------------------
+    // IMGUI CLEANUP
+    //------------------------------
+    //
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+
+    return 0;
 }
