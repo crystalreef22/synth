@@ -175,6 +175,7 @@ void synthThread(int* returnErr, std::vector<frame_t>* lpcFrames, float lpcFrame
     Pa_Terminate();
     printf("Test finished.\n");
     *returnErr = err;
+    return;
 
 error:
     Pa_Terminate();
@@ -182,6 +183,7 @@ error:
     std::cerr << "Error number: " << err << std::endl;
     std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
     *returnErr =  err;
+    return;
 }
 
 int main(){
