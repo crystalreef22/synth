@@ -4,6 +4,7 @@
 #include <portaudio.h>
 #include "circular_buffer.hpp"
 #include <optional>
+#include <string>
 #include <vector>
 #include <sstream>
 // uncomment to disable assert()
@@ -85,7 +86,7 @@ public:
     }
 
 
-    float getOutputSample(size_t buzzI, float breath = 0.15, float pitch = 150, float buzzGain = 0.9){
+    float getOutputSample(float breath = 0.1, float buzz = 0.8, float pitch = 150){
         
         // @Bisqwit@youtube.com
         // 5 years ago (edited)
@@ -95,16 +96,22 @@ public:
 
         size_t cSize = coefficients.size();
 
-        float output = genBuzz(buzzI, breath * buzzGain, (1-breath) * buzzGain, pitch);
+        float output = genBuzz(buzzI, breath, buzz, pitch);
         for(size_t i=0; i<cSize;i++){
             output -= coefficients[i] * delayLine[(cSize - i + count) % cSize];
         }
         if (++count >= cSize) count = 0;
         delayLine[count] = output;
+
         
-        
+        buzzI++;
 
         return(std::max(-1.0f,std::min(output * sqrt(gain),1.0f)));
+    }
+
+    void reset(){
+        count = 0;
+        std::fill(delayLine.begin(), delayLine.end(), 0.0f);
     }
 
 private:
@@ -113,6 +120,7 @@ private:
     size_t coefficientSize;
     size_t count = 0;
     float gain = 0;
+    int buzzI = 0;
 };
 
 struct frame_t {
@@ -120,7 +128,7 @@ struct frame_t {
     float gain = 0;
 };
 
-void synthThread(int* returnErr, std::vector<frame_t>* lpcFrames, float lpcFrameLength) {
+void synthThread(int* returnErr, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, bool* stopStream) {
     // Init sound
 
     PaStream *stream;
@@ -155,16 +163,12 @@ void synthThread(int* returnErr, std::vector<frame_t>* lpcFrames, float lpcFrame
 
     {
         // synth mySynth({-0.8579094422019475,-0.9277631143195522,0.804326386102418,0.26789408269619314,-0.39655431995016505,0.40583070034300345,-0.04803689569700615,-0.7224031368285665,0.3706332655071031,0.5274388251363206,-0.5919288151596237,-0.2548778925565867,0.5521411691507471,0.1196527490841037,-0.26917557222963295,0.07046663444708721},0.00034088200960689826);
-        synth mySynth((*lpcFrames)[0].coefficients.size());
+        synth mySynth((*lpcFrame).coefficients.size());
 
-        size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
-        size_t sampleCount = (*lpcFrames).size()*samplesPerFrame;
-        for(size_t i=0;i<sampleCount;i++){
-            frame_t frame = (*lpcFrames)[i/samplesPerFrame];
-            // std::cout << frame.gain << std::endl;
-            mySynth.setCoefficients(frame.coefficients, frame.gain);
-            //std::cout << frame.coefficients[0] << std::endl;
-            sharedBuffer.wait_put(mySynth.getOutputSample(i));
+        //size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
+        while (!(*stopStream)){
+            mySynth.setCoefficients((*lpcFrame).coefficients, (*lpcFrame).gain);
+            sharedBuffer.wait_put(mySynth.getOutputSample(*breath, *buzz, *pitch));
         }
     }
 
@@ -325,6 +329,14 @@ int main(){
 
 
     int st1err = -1;
+    frame_t lpcFrame = lpcFrames[0];
+    int lpcFrameI = 0;
+    int maxFrameI = lpcFrames.size();
+    bool stopStream = false;
+    float breath = 0.1;
+    float buzz = 0.8;
+    float pitch = 150;
+    std::thread st1(synthThread, &st1err, &lpcFrame, &breath, &buzz, &pitch, &stopStream);
 
     //------------------------------
     // MAIN LOOP
@@ -342,13 +354,21 @@ int main(){
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
         {
 
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            if (ImGui::Button("run")) {                          // Buttons return true when clicked (most widgets return true when edited/activated)
-                std::cout << "yay" << std::endl;
-                std::thread st1(synthThread,&st1err, &lpcFrames, lpcFrameLength);
-                st1.detach();
+            ImGui::Begin("LPC browser");                          // Create a window called "Hello, world!" and append into it.
+            ImGui::Text("Click and drag to edit value.\n"
+                "Hold SHIFT/ALT for faster/slower edit.\n"
+                "Double-click or CTRL+click to input value.");
+            ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SameLine();ImGui::Text("max: %d", maxFrameI);
+            ImGui::SliderFloat("Buzz", &buzz, 0, 1);
+            ImGui::SliderFloat("Breath", &breath, 0, 1);
+            ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
+            if (ImGui::Button("Normalize Buzz-Breath Ratio")) {
+                float total = buzz + breath;
+                buzz /= total;
+                breath /= total;
             }
+            lpcFrame = lpcFrames[lpcFrameI];
             if (ImGui::Button("check error to cout")) {                          // Buttons return true when clicked (most widgets return true when edited/activated)
                 std::cout << st1err << std::endl;
             }
@@ -365,6 +385,12 @@ int main(){
 
         glfwSwapBuffers(window);
     }
+
+
+
+    // Tell thread to stop the stream cleanly
+    stopStream = true;
+    st1.join();
 
 
 
