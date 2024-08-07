@@ -11,7 +11,7 @@
 #   pacman -S --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-glfw
 #
 
-CXX = g++
+#CXX = g++
 #CXX = clang++
 
 EXE = a.out
@@ -73,8 +73,7 @@ endif
 ## Portaudio
 ##---------------------------------------------------------------------
 
-CXXFLAGS += -I/opt/homebrew/Cellar/portaudio/19.7.0/include -L/opt/homebrew/Cellar/portaudio/19.7.0/lib -lportaudio
-
+LIBS += -lportaudio
 
 
 ##---------------------------------------------------------------------

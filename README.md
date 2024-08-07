@@ -6,6 +6,8 @@ This is an **unfinished** speech synthesizer made with C\+\+, [PortAudio](https:
 
 - You can't use this yet
 
+To compile this yourself, you need a C++ compiler (gcc, clang, mingw) and some build tools (make). Make sure [PortAudio](https://www.portaudio.com/) is installed so it can link properly. Just run `make` and it should work.
+
 ## FAQ
 
 **Can you think of a better name for this than "synth"?**
