@@ -10,7 +10,7 @@ To compile this yourself, you need a C++ compiler (gcc, clang, mingw) and some b
 
 ## FAQ
 
-**Can you think of a better name for this than "synth"?**
+### Can you think of a better name for this than "synth"?**
 
 I have an idea, and might rename this repository sometime later.
 
@@ -19,7 +19,7 @@ I have an idea, and might rename this repository sometime later.
 
 **forestria** *vocal synth*!
 
-**Why are you working on this?**
+### Why are you working on this?**
 
 Because of *procrastination*.
 
