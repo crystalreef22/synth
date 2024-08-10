@@ -117,67 +117,40 @@ private:
     // float gain = 0;
     int buzzI = 0;
 };
-
-
-void synthThread(int* returnErr, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, std::atomic_bool* stopStream) {
-    // Init sound
-
-    PaStream *stream;
-    PaError err;
-
-    shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
-
-    err = Pa_Initialize();
-    if( err != paNoError ) goto error;
-
-        /* Open an audio I/O stream. */
-    err = Pa_OpenDefaultStream( &stream,
-                                0,          /* no input channels */
-                                2,          /* stereo output */
-                                paFloat32,  /* 32 bit floating point output */
-                                SAMPLE_RATE,
-                                paFramesPerBufferUnspecified,
-                                                /* frames per buffer default:256, i.e. the number
-                                                   of sample frames that PortAudio will
-                                                   request from the callback. Many apps
-                                                   may want to use
-                                                   paFramesPerBufferUnspecified, which
-                                                   tells PortAudio to pick the best,
-                                                   possibly changing, buffer size.*/
-                                paCallback, /* this is your callback function */
-                                &sharedBuffer ); /*This is a pointer that will be passed to
-                                                   your callback*/
-    if( err != paNoError ) goto error;
-
-    err = Pa_StartStream( stream );
-    if( err != paNoError ) goto error;
-
+/* I tried to make it a thread. IDK if it would work, but deleteme now
+class synthThread {
+public:
+    synthThread()
+        :
     {
-        // synth mySynth({-0.8579094422019475,-0.9277631143195522,0.804326386102418,0.26789408269619314,-0.39655431995016505,0.40583070034300345,-0.04803689569700615,-0.7224031368285665,0.3706332655071031,0.5274388251363206,-0.5919288151596237,-0.2548778925565867,0.5521411691507471,0.1196527490841037,-0.26917557222963295,0.07046663444708721},0.00034088200960689826);
+        thread_ = std::thread(&synthThread::threadFunction, this);
+    };
+    
+
+    ~synthThread() {
+        //Join thread
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+        
+private:
+    void threadFunction(){
+    }
+private:
+    std::thread thread_;
+    frame_t lpcFrame;
+    float breath;float buzz;float pitch;
+};*/
+
+
+void synthThread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, std::atomic_bool* stopStream) {
         synth mySynth((*lpcFrame).coefficients.size());
 
         //size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
         while (!((*stopStream).load())){
-            sharedBuffer.wait_put(mySynth.getOutputSample(*lpcFrame, *breath, *buzz, *pitch));
+            sharedBuffer -> wait_put(mySynth.getOutputSample(*lpcFrame, *breath, *buzz, *pitch));
         }
-    }
-
-    err = Pa_StopStream( stream );
-    if( err != paNoError ) goto error;
-    err = Pa_CloseStream( stream );
-    if( err != paNoError ) goto error;
-    Pa_Terminate();
-    printf("Test finished.\n");
-    *returnErr = err;
-    return;
-
-error:
-    Pa_Terminate();
-    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
-    std::cerr << "Error number: " << err << std::endl;
-    std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
-    *returnErr =  err;
-    return;
 }
 
 int main(){
@@ -318,73 +291,127 @@ int main(){
 
 
 
-    int st1err{-1};
-    frame_t lpcFrame{lpcFrames[0]}; // This requires a mutex, but does not have one
-                                    // Add mutex later!!!
-    int lpcFrameI{0}; // All those require one mutex
-    int maxFrameI = lpcFrames.size(); // size_t to int
-    std::atomic_bool stopStream{false}; // No mutex for this one, but must be atomic
-    float breath {0.1};
-    float buzz {0.8};
-    float pitch {150};
-    // NOT THREAD SAFE!!!!!!!!!
-    std::thread st1(synthThread, &st1err, &lpcFrame, &breath, &buzz, &pitch, &stopStream);
-
-    //------------------------------
-    // MAIN LOOP
-    //------------------------------
-
     
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
+    //------------------------------
+    // START PORTAUDIO?
+    //------------------------------
+    PaStream *stream;
+    PaError err;
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+    shared_circular_buffer<float, RINGBUFFER_SIZE> sharedBuffer;
 
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-        {
+    err = Pa_Initialize();
+    if( err != paNoError ) goto portaudioError;
 
-            ImGui::Begin("LPC browser");                          // Create a window called "Hello, world!" and append into it.
-            ImGui::Text("Click and drag to edit value.\n"
-                "Hold SHIFT/ALT for faster/slower edit.\n"
-                "Double-click or CTRL+click to input value.");
-            ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SameLine();ImGui::Text("max: %d", maxFrameI);
-            ImGui::SliderFloat("Buzz", &buzz, 0, 1);
-            ImGui::SliderFloat("Breath", &breath, 0, 1);
-            ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
-            if (ImGui::Button("Normalize Buzz-Breath Ratio")) {
-                float total = buzz + breath;
-                buzz /= total;
-                breath /= total;
+        /* Open an audio I/O stream. */
+    err = Pa_OpenDefaultStream( &stream,
+                                0,          /* no input channels */
+                                2,          /* stereo output */
+                                paFloat32,  /* 32 bit floating point output */
+                                SAMPLE_RATE,
+                                paFramesPerBufferUnspecified,
+                                                /* frames per buffer default:256, i.e. the number
+                                                   of sample frames that PortAudio will
+                                                   request from the callback. Many apps
+                                                   may want to use
+                                                   paFramesPerBufferUnspecified, which
+                                                   tells PortAudio to pick the best,
+                                                   possibly changing, buffer size.*/
+                                paCallback, /* this is your callback function */
+                                &sharedBuffer ); /*This is a pointer that will be passed to
+                                                   your callback*/
+    if( err != paNoError ) goto portaudioError;
+
+    err = Pa_StartStream( stream );
+    if( err != paNoError ) goto portaudioError;
+
+    { // END SETUP
+
+        frame_t lpcFrame{lpcFrames[0]}; // This requires a mutex, but does not have one
+                                        // Add mutex later!!!
+        int lpcFrameI{0}; // All those require one mutex
+        int maxFrameI = lpcFrames.size(); // size_t to int
+        std::atomic_bool stopStream{false}; // No mutex for this one, but must be atomic
+        float breath {0.1};
+        float buzz {0.8};
+        float pitch {150};
+        // NOT THREAD SAFE!!!!!!!!!
+        std::thread st1(synthThread, &sharedBuffer, &lpcFrame, &breath, &buzz, &pitch, &stopStream);
+
+        //------------------------------
+        // MAIN LOOP
+        //------------------------------
+
+        
+        while (!glfwWindowShouldClose(window)) {
+            glfwPollEvents();
+
+            // Start the Dear ImGui frame
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+            {
+
+                ImGui::Begin("LPC browser");                          // Create a window called "Hello, world!" and append into it.
+                ImGui::Text("Click and drag to edit value.\n"
+                    "Hold SHIFT/ALT for faster/slower edit.\n"
+                    "Double-click or CTRL+click to input value.");
+                ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SameLine();ImGui::Text("max: %d", maxFrameI);
+                ImGui::SliderFloat("Buzz", &buzz, 0, 1);
+                ImGui::SliderFloat("Breath", &breath, 0, 1);
+                ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
+                if (ImGui::Button("Normalize Buzz-Breath Ratio")) {
+                    float total = buzz + breath;
+                    buzz /= total;
+                    breath /= total;
+                }
+                lpcFrame = lpcFrames[lpcFrameI];
+                ImGui::End();
             }
-            lpcFrame = lpcFrames[lpcFrameI];
-            if (ImGui::Button("check error to cout")) {                          // Buttons return true when clicked (most widgets return true when edited/activated)
-                std::cout << st1err << std::endl;
-            }
-            ImGui::End();
+
+            ImGui::Render();
+            int display_w, display_h;
+            glfwGetFramebufferSize(window, &display_w, &display_h);
+            glViewport(0, 0, display_w, display_h);
+            glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+            glClear(GL_COLOR_BUFFER_BIT);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            glfwSwapBuffers(window);
         }
 
-        ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        stopStream.store(true);
+        if(st1.joinable()){
+            st1.join();
+        }
 
-        glfwSwapBuffers(window);
-    }
+    } // BEGIN SHUTDOWN
+
+    //------------------------------
+    // STOP PORTAUDIO
+    //------------------------------
+    err = Pa_StopStream( stream );
+    if( err != paNoError ) goto portaudioError;
+    err = Pa_CloseStream( stream );
+    if( err != paNoError ) goto portaudioError;
+    Pa_Terminate();
+    goto imguiCleanup;
+
+portaudioError:
+    Pa_Terminate();
+    std::cerr << "An error occured while using the portaudio stream\n" << std::endl;
+    std::cerr << "Error number: " << err << std::endl;
+    std::cerr << "Error message: " << Pa_GetErrorText(err) << std::endl;
+    goto imguiCleanup;
 
 
 
-    // Tell thread to stop the stream cleanly
-    stopStream.store(true);
-    st1.join();
 
 
+imguiCleanup:
 
 
     //------------------------------
@@ -399,5 +426,5 @@ int main(){
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    return 0;
+    return err;
 }
