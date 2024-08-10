@@ -69,24 +69,19 @@ float genBuzz(float x, float noiseAmplitude, float sawAmplitude, float period) {
     return noiseAmplitude * (drand48() - 0.5) + genSaw(x, sawAmplitude, period);
 }
 
+struct frame_t {
+    std::vector<float> coefficients;
+    float gain = 0;
+};
+
 class synth {
 public:
     synth(size_t coefficientSize)
-        : coefficients(coefficientSize, 0),
-        delayLine(coefficientSize, 0),
-        coefficientSize(coefficientSize)
+        : delayLine(coefficientSize, 0)
     {}
 
 
-    void setCoefficients(const std::vector<float>& coeff, float g){
-        if (coeff.size() == coefficientSize){
-            coefficients = coeff;
-            gain = g;
-        }
-    }
-
-
-    float getOutputSample(float breath = 0.1, float buzz = 0.8, float pitch = 150){
+    float getOutputSample(const frame_t& frame, float breath = 0.1, float buzz = 0.8, float pitch = 150){
         
         // @Bisqwit@youtube.com
         // 5 years ago (edited)
@@ -94,11 +89,11 @@ public:
         // ‣ y[] = output signal, e[] = excitation signal (buzz, also called predictor error signal), b[] = the coefficients for the given frame
         // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
 
-        size_t cSize = coefficients.size();
+        size_t cSize = frame.coefficients.size();
 
         float output = genBuzz(buzzI, breath, buzz, pitch);
         for(size_t i=0; i<cSize;i++){
-            output -= coefficients[i] * delayLine[(cSize - i + count) % cSize];
+            output -= frame.coefficients[i] * delayLine[(cSize - i + count) % cSize];
         }
         if (++count >= cSize) count = 0;
         delayLine[count] = output;
@@ -106,7 +101,7 @@ public:
         
         buzzI++;
 
-        return(std::max(-1.0f,std::min(output * sqrt(gain),1.0f)));
+        return(std::max(-1.0f,std::min(output * sqrt(frame.gain),1.0f)));
     }
 
     void reset(){
@@ -115,20 +110,16 @@ public:
     }
 
 private:
-    std::vector<float> coefficients;
+    // std::vector<float> coefficients;
     std::vector<float> delayLine;
-    size_t coefficientSize;
+    // size_t coefficientSize;
     size_t count = 0;
-    float gain = 0;
+    // float gain = 0;
     int buzzI = 0;
 };
 
-struct frame_t {
-    std::vector<float> coefficients;
-    float gain = 0;
-};
 
-void synthThread(int* returnErr, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, bool* stopStream) {
+void synthThread(int* returnErr, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, std::atomic_bool* stopStream) {
     // Init sound
 
     PaStream *stream;
@@ -166,9 +157,8 @@ void synthThread(int* returnErr, frame_t* lpcFrame, float* breath, float* buzz, 
         synth mySynth((*lpcFrame).coefficients.size());
 
         //size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
-        while (!(*stopStream)){
-            mySynth.setCoefficients((*lpcFrame).coefficients, (*lpcFrame).gain);
-            sharedBuffer.wait_put(mySynth.getOutputSample(*breath, *buzz, *pitch));
+        while (!((*stopStream).load())){
+            sharedBuffer.wait_put(mySynth.getOutputSample(*lpcFrame, *breath, *buzz, *pitch));
         }
     }
 
@@ -324,18 +314,20 @@ int main(){
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    ImVec4 clear_color = ImVec4(0.45f, 0.60, 0.55f, 1.00f);
 
 
 
-    int st1err = -1;
-    frame_t lpcFrame = lpcFrames[0];
-    int lpcFrameI = 0;
-    int maxFrameI = lpcFrames.size();
-    bool stopStream = false;
-    float breath = 0.1;
-    float buzz = 0.8;
-    float pitch = 150;
+    int st1err{-1};
+    frame_t lpcFrame{lpcFrames[0]}; // This requires a mutex, but does not have one
+                                    // Add mutex later!!!
+    int lpcFrameI{0}; // All those require one mutex
+    int maxFrameI = lpcFrames.size(); // size_t to int
+    std::atomic_bool stopStream{false}; // No mutex for this one, but must be atomic
+    float breath {0.1};
+    float buzz {0.8};
+    float pitch {150};
+    // NOT THREAD SAFE!!!!!!!!!
     std::thread st1(synthThread, &st1err, &lpcFrame, &breath, &buzz, &pitch, &stopStream);
 
     //------------------------------
@@ -389,7 +381,7 @@ int main(){
 
 
     // Tell thread to stop the stream cleanly
-    stopStream = true;
+    stopStream.store(true);
     st1.join();
 
 
