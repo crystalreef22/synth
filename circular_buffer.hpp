@@ -36,7 +36,7 @@ public:
     // */
     
 
-    void wait_put(T item){ // Not in tutorial. Got idea from ChatGPT and Stack Overflow
+    void wait_put(T item){
         std::unique_lock<std::mutex> lock(mutex_);
 
         not_full.wait(lock, [this] {return !full_;}); // Wait until not full

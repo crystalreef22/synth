@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <math.h>
+#include <mutex>
 #include <portaudio.h>
 #include "circular_buffer.hpp"
 #include <optional>
@@ -117,41 +118,65 @@ private:
     // float gain = 0;
     int buzzI = 0;
 };
-/* I tried to make it a thread. IDK if it would work, but deleteme now
-class synthThread {
+
+class synth_thread {
 public:
-    synthThread()
-        :
+    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, size_t maxFrameLength)
+        : sharedBuffer{sharedBuffer},
+        maxFrameLength{maxFrameLength}
     {
-        thread_ = std::thread(&synthThread::threadFunction, this);
+        thread_ = std::thread(&synth_thread::threadFunction, this);
     };
     
 
-    ~synthThread() {
+    ~synth_thread() {
+        stopStream.store(true);
         //Join thread
         if (thread_.joinable()) {
             thread_.join();
         }
     }
+
+    void update(const frame_t &lpcFrame, float breath, float buzz, float pitch) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        this->lpcFrame = lpcFrame;
+        this->breath = breath;
+        this->buzz = buzz;
+        this->pitch = pitch;
+        newDataAvailable.store(true);
+    }
         
 private:
     void threadFunction(){
+        synth mySynth(maxFrameLength);
+
+        frame_t localLpcFrame{lpcFrame};
+        float localBreath{breath};
+        float localBuzz{buzz};
+        float localPitch{pitch};
+        while (!(stopStream.load())) {
+            if (newDataAvailable.load()) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                localLpcFrame = lpcFrame;
+                localBreath = breath;
+                localBuzz = buzz;
+                localPitch = pitch;
+                newDataAvailable.store(false);
+            }
+            sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
+        }
     }
 private:
+    std::mutex mutex_;
     std::thread thread_;
+    shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer;
+    std::atomic_bool stopStream{false};
+    std::atomic_bool newDataAvailable{false};
     frame_t lpcFrame;
-    float breath;float buzz;float pitch;
-};*/
+    float breath{0};float buzz{0};float pitch{0};
+    size_t maxFrameLength;
+};
 
-
-void synthThread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, frame_t* lpcFrame, float* breath, float* buzz, float* pitch, std::atomic_bool* stopStream) {
-        synth mySynth((*lpcFrame).coefficients.size());
-
-        //size_t samplesPerFrame = lpcFrameLength*SAMPLE_RATE;
-        while (!((*stopStream).load())){
-            sharedBuffer -> wait_put(mySynth.getOutputSample(*lpcFrame, *breath, *buzz, *pitch));
-        }
-}
 
 int main(){
     // Read LPC
@@ -327,16 +352,9 @@ int main(){
 
     { // END SETUP
 
-        frame_t lpcFrame{lpcFrames[0]}; // This requires a mutex, but does not have one
-                                        // Add mutex later!!!
-        int lpcFrameI{0}; // All those require one mutex
         int maxFrameI = lpcFrames.size(); // size_t to int
-        std::atomic_bool stopStream{false}; // No mutex for this one, but must be atomic
-        float breath {0.1};
-        float buzz {0.8};
-        float pitch {150};
         // NOT THREAD SAFE!!!!!!!!!
-        std::thread st1(synthThread, &sharedBuffer, &lpcFrame, &breath, &buzz, &pitch, &stopStream);
+        synth_thread synthThread{&sharedBuffer, lpcFrames.size()};
 
         //------------------------------
         // MAIN LOOP
@@ -358,8 +376,15 @@ int main(){
                 ImGui::Text("Click and drag to edit value.\n"
                     "Hold SHIFT/ALT for faster/slower edit.\n"
                     "Double-click or CTRL+click to input value.");
+
+
+
+                static int lpcFrameI;
                 ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
                 ImGui::SameLine();ImGui::Text("max: %d", maxFrameI);
+
+                static float breath{0.1}; static float buzz{0.8}; static float pitch{150};
+
                 ImGui::SliderFloat("Buzz", &buzz, 0, 1);
                 ImGui::SliderFloat("Breath", &breath, 0, 1);
                 ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
@@ -368,7 +393,24 @@ int main(){
                     buzz /= total;
                     breath /= total;
                 }
-                lpcFrame = lpcFrames[lpcFrameI];
+                synthThread.update(lpcFrames[lpcFrameI], breath, buzz, pitch);
+
+
+                ImGui::Separator();
+
+                ImGui::Text("The buttons below are not implemented.");
+                ImGui::Button("Set segment start");
+                ImGui::SameLine();ImGui::Button("Set segment end");
+
+                static int sampleTypeI = 0;
+                ImGui::Combo("Sample type", &sampleTypeI, "oneshot\0loop\0\0");
+
+                static bool unvoiced = false;
+
+                ImGui::Checkbox("unvoiced", &unvoiced);
+
+                ImGui::Button("Save segment");
+
                 ImGui::End();
             }
 
@@ -383,11 +425,8 @@ int main(){
             glfwSwapBuffers(window);
         }
 
-        stopStream.store(true);
-        if(st1.joinable()){
-            st1.join();
-        }
-
+        // synth thread goes out of scope, deconstructor called
+        
     } // BEGIN SHUTDOWN
 
     //------------------------------
