@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <map>
 #include <math.h>
 #include <mutex>
 #include <portaudio.h>
@@ -119,6 +120,7 @@ private:
     int buzzI = 0;
 };
 
+
 class synth_thread {
 public:
     synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, size_t maxFrameLength)
@@ -145,7 +147,7 @@ public:
         this->pitch = pitch;
         newDataAvailable.store(true);
     }
-        
+
 private:
     void threadFunction(){
         synth mySynth(maxFrameLength);
@@ -175,6 +177,14 @@ private:
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
     size_t maxFrameLength;
+};
+
+enum class phoneme_Playback {oneshot, randomloop};
+
+struct phoneme {
+    bool voiced;
+    phoneme_Playback playback;
+    std::vector<frame_t> frames;
 };
 
 
@@ -356,6 +366,8 @@ int main(){
         // NOT THREAD SAFE!!!!!!!!!
         synth_thread synthThread{&sharedBuffer, lpcFrames.size()};
 
+        std::map<std::string, phoneme> voicebank;
+
         //------------------------------
         // MAIN LOOP
         //------------------------------
@@ -402,14 +414,27 @@ int main(){
                 ImGui::Button("Set segment start");
                 ImGui::SameLine();ImGui::Button("Set segment end");
 
-                static int sampleTypeI = 0;
-                ImGui::Combo("Sample type", &sampleTypeI, "oneshot\0loop\0\0");
+                static int sampleTypeIdx = 0;
+                ImGui::Combo("Sample type", &sampleTypeIdx, "oneshot\0randomloop\0\0");
 
-                static bool unvoiced = false;
+                static bool voiced = true;
 
-                ImGui::Checkbox("unvoiced", &unvoiced);
+                ImGui::Checkbox("voiced", &voiced);
 
-                ImGui::Button("Save segment");
+                const std::vector<std::string> testArray {"TEST1","TEST2"};
+                static int phonemeTypeIdx;
+                ImGui::Combo("phoneme type", &phonemeTypeIdx, "TEST\0TEST2\0\0");
+
+                if (ImGui::Button("Save phoneme")) {
+                    phoneme_Playback playback;
+                    if (sampleTypeIdx == 0) playback = phoneme_Playback::oneshot;
+                    if (sampleTypeIdx == 1) playback = phoneme_Playback::randomloop;
+                    
+                    std::vector<frame_t> slicedFrames; // NOT IMPLEMENTED
+
+
+                    voicebank.insert_or_assign(testArray[phonemeTypeIdx], phoneme(voiced, playback, slicedFrames));
+                }
 
                 ImGui::End();
             }
