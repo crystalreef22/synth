@@ -432,15 +432,18 @@ int main(){
 
                 // arpabet selector combobox
                 static int phonemeArpabetIdx;
-                const char* arpabetArray[] = {
+                const std::vector<std::string> phonemeNames = {
                     "AA","AE","AH","AO","AW","AY","B","CH","D","DH","EH","ER","EY","F","G","HH","IH","IY","JH","K","L","M","N","NG","OW","OY","P","R","S","SH","T","TH","UH","UW","V","W","Y","Z","ZH"
                 };
-                const char* combo_preview_value = arpabetArray[phonemeArpabetIdx];
+                const char* combo_preview_value = (phonemeNames[phonemeArpabetIdx]).c_str();
+
                 if (ImGui::BeginCombo("Phoneme representation", combo_preview_value)) {
-                    for (int n = 0; n < IM_ARRAYSIZE(arpabetArray); n++)
+                    for (int n = 0; n < phonemeNames.size(); n++)
                     {
                         const bool is_selected = (phonemeArpabetIdx == n);
-                        if (ImGui::Selectable(arpabetArray[n], is_selected))
+                        std::string phone = phonemeNames[n];
+                        if (voicebank.contains(phone)) {phone = "(saved) " + phone;}
+                        if (ImGui::Selectable(phone.c_str(), is_selected))
                             phonemeArpabetIdx = n;
 
                         // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
@@ -450,7 +453,8 @@ int main(){
                     ImGui::EndCombo();
                 }
 
-                const bool voicebankContainsComboItem = voicebank.contains(arpabetArray[phonemeArpabetIdx]);
+                const bool voicebankContainsComboItem = voicebank.contains(phonemeNames[phonemeArpabetIdx]);
+
                 
                 // Save phoneme button
                 ImGui::BeginDisabled(segmentStart > segmentEnd); // Disable if segment is illegal
@@ -467,9 +471,9 @@ int main(){
                     }
 
 
-                    voicebank.insert_or_assign(arpabetArray[phonemeArpabetIdx], phoneme{voiced, playback, slicedFrames});
+                    voicebank.insert_or_assign(phonemeNames[phonemeArpabetIdx], phoneme{voiced, playback, slicedFrames});
 
-                    ++phonemeArpabetIdx %= IM_ARRAYSIZE(arpabetArray);
+                    ++phonemeArpabetIdx %= phonemeNames.size();
                 }
                 ImGui::EndDisabled();
 
@@ -477,7 +481,7 @@ int main(){
                 ImGui::SameLine();
                 ImGui::BeginDisabled(! voicebankContainsComboItem);
                 if (ImGui::Button("Remove")) {
-                    voicebank.erase(arpabetArray[phonemeArpabetIdx]);
+                    voicebank.erase(phonemeNames[phonemeArpabetIdx]);
                 }
                 ImGui::EndDisabled();
 
