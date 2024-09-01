@@ -308,7 +308,7 @@ int main(){
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "Forestria Synthesizer", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
@@ -410,31 +410,74 @@ int main(){
 
                 ImGui::Separator();
 
-                ImGui::Text("The buttons below are not implemented.");
-                ImGui::Button("Set segment start");
-                ImGui::SameLine();ImGui::Button("Set segment end");
+                static size_t segmentStart{0};
+                static size_t segmentEnd{0};
+
+                if (ImGui::Button("Set segment start")) {
+                    segmentStart = lpcFrameI;
+                }
+                ImGui::SameLine(); ImGui::Text("%i", (int)segmentStart);
+                
+                ImGui::SameLine();
+                if (ImGui::Button("Set segment end")) {
+                    segmentEnd = lpcFrameI;
+                }
+                ImGui::SameLine(); ImGui::Text("%i", (int)segmentEnd);
 
                 static int sampleTypeIdx = 0;
                 ImGui::Combo("Sample type", &sampleTypeIdx, "oneshot\0randomloop\0\0");
 
                 static bool voiced = true;
-
                 ImGui::Checkbox("voiced", &voiced);
 
-                const std::vector<std::string> testArray {"TEST1","TEST2"};
-                static int phonemeTypeIdx;
-                ImGui::Combo("phoneme type", &phonemeTypeIdx, "TEST\0TEST2\0\0");
+                // arpabet selector combobox
+                static int phonemeArpabetIdx;
+                const char* arpabetArray[] = { "AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII", "JJJJ", "KKKK", "LLLLLLL", "MMMM", "OOOOOOO" };
+                const char* combo_preview_value = arpabetArray[phonemeArpabetIdx];
+                if (ImGui::BeginCombo("Phoneme representation", combo_preview_value)) {
+                    for (int n = 0; n < IM_ARRAYSIZE(arpabetArray); n++)
+                    {
+                        const bool is_selected = (phonemeArpabetIdx == n);
+                        if (ImGui::Selectable(arpabetArray[n], is_selected))
+                            phonemeArpabetIdx = n;
 
-                if (ImGui::Button("Save phoneme")) {
+                        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                        if (is_selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                const bool voicebankContainsComboItem = voicebank.contains(arpabetArray[phonemeArpabetIdx]);
+                
+                // Save phoneme button
+                ImGui::BeginDisabled(segmentStart > segmentEnd); // Disable if segment is illegal
+
+                if (ImGui::Button(voicebankContainsComboItem ? "Overwrite" : "Save")) {
                     phoneme_Playback playback;
                     if (sampleTypeIdx == 0) playback = phoneme_Playback::oneshot;
                     if (sampleTypeIdx == 1) playback = phoneme_Playback::randomloop;
                     
-                    std::vector<frame_t> slicedFrames; // NOT IMPLEMENTED
+                    std::vector<frame_t> slicedFrames{segmentEnd - segmentStart + 1};
+
+                    for (size_t i = segmentStart; i <= segmentEnd; i++) {
+                        slicedFrames.push_back(lpcFrames[i]); // What's the difference between push_back and emplace_back?
+                    }
 
 
-                    voicebank.insert_or_assign(testArray[phonemeTypeIdx], phoneme(voiced, playback, slicedFrames));
+                    voicebank.insert_or_assign(arpabetArray[phonemeArpabetIdx], phoneme{voiced, playback, slicedFrames});
+
+                    ++phonemeArpabetIdx %= IM_ARRAYSIZE(arpabetArray);
                 }
+                ImGui::EndDisabled();
+
+                // Remove button
+                ImGui::SameLine();
+                ImGui::BeginDisabled(! voicebankContainsComboItem);
+                if (ImGui::Button("Remove")) {
+                    voicebank.erase(arpabetArray[phonemeArpabetIdx]);
+                }
+                ImGui::EndDisabled();
 
                 ImGui::End();
             }
