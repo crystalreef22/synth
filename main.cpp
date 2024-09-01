@@ -147,6 +147,19 @@ public:
         this->pitch = pitch;
         newDataAvailable.store(true);
     }
+    
+    void pause() {
+        paused.store(true);
+    };
+    void resume() {
+        paused.store(false);
+    };
+    bool getPaused() {
+        return paused.load();
+    }
+    void togglePaused() {
+        paused.store(!paused.load());
+    }
 
 private:
     void threadFunction(){
@@ -165,11 +178,16 @@ private:
                 localPitch = pitch;
                 newDataAvailable.store(false);
             }
-            sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
+            if (paused.load()) {
+                sharedBuffer -> wait_put(0.0f);
+            } else {
+                sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
+            }
         }
     }
 private:
     std::mutex mutex_;
+    std::atomic_bool paused{false};
     std::thread thread_;
     shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer;
     std::atomic_bool stopStream{false};
@@ -390,6 +408,9 @@ int main(){
                     "Double-click or CTRL+click to input value.");
 
 
+                if (ImGui::Button(synthThread.getPaused() ? "Resume" : "Pause")) {
+                    synthThread.togglePaused();
+                }
 
                 static int lpcFrameI;
                 ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
@@ -442,7 +463,7 @@ int main(){
                     {
                         const bool is_selected = (phonemeArpabetIdx == n);
                         std::string phone = phonemeNames[n];
-                        if (voicebank.contains(phone)) {phone = "(saved) " + phone;}
+                        if (voicebank.contains(phone)) {phone = "* " + phone;}
                         if (ImGui::Selectable(phone.c_str(), is_selected))
                             phonemeArpabetIdx = n;
 
