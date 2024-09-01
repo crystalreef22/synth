@@ -432,7 +432,9 @@ int main(){
 
                 // arpabet selector combobox
                 static int phonemeArpabetIdx;
-                const char* arpabetArray[] = { "AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII", "JJJJ", "KKKK", "LLLLLLL", "MMMM", "OOOOOOO" };
+                const char* arpabetArray[] = {
+                    "AA","AE","AH","AO","AW","AY","B","CH","D","DH","EH","ER","EY","F","G","HH","IH","IY","JH","K","L","M","N","NG","OW","OY","P","R","S","SH","T","TH","UH","UW","V","W","Y","Z","ZH"
+                };
                 const char* combo_preview_value = arpabetArray[phonemeArpabetIdx];
                 if (ImGui::BeginCombo("Phoneme representation", combo_preview_value)) {
                     for (int n = 0; n < IM_ARRAYSIZE(arpabetArray); n++)
