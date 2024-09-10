@@ -61,6 +61,11 @@ PaStreamCallbackFlags statusFlags,
     return 0;
 }
 
+
+const std::vector<std::string> phonemeNames = {
+    "AA","AE","AH","AO","AW","AY","B","CH","D","DH","EH","ER","EY","F","G","HH","IH","IY","JH","K","L","M","N","NG","OW","OY","P","R","S","SH","T","TH","UH","UW","V","W","Y","Z","ZH"
+};
+
 // Generate LPC for to read
 
 float genSaw(float x, float amplitude, float period) {
@@ -210,7 +215,7 @@ int main(){
     // Read LPC
 
 
-    std::ifstream lpcFile("batchaduz-48-burg.LPC");
+    std::ifstream lpcFile("untitled.LPC");
     if (!lpcFile.is_open()){
         std::cerr << "Error opening lpc file" << std::endl;
         return 1;
@@ -453,9 +458,6 @@ int main(){
 
                 // arpabet selector combobox
                 static int phonemeArpabetIdx;
-                const std::vector<std::string> phonemeNames = {
-                    "AA","AE","AH","AO","AW","AY","B","CH","D","DH","EH","ER","EY","F","G","HH","IH","IY","JH","K","L","M","N","NG","OW","OY","P","R","S","SH","T","TH","UH","UW","V","W","Y","Z","ZH"
-                };
                 const char* combo_preview_value = (phonemeNames[phonemeArpabetIdx]).c_str();
 
                 if (ImGui::BeginCombo("Phoneme representation", combo_preview_value)) {
