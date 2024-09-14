@@ -202,7 +202,7 @@ private:
     size_t maxFrameLength;
 };
 
-enum class phoneme_Playback {oneshot, randomloop};
+enum class phoneme_Playback {ONESHOT, RANDOMLOOP};
 
 struct phoneme {
     bool voiced;
@@ -210,12 +210,49 @@ struct phoneme {
     std::vector<frame_t> frames;
 };
 
+bool writeVoicebank(std::map<std::string, phoneme> voicebank) {
+    std::ofstream out("out.frv");
+
+    for (const auto& phonemePair : voicebank) {
+        out << "\" " << phonemePair.first << "\n"; // ARPABET
+        auto& phone = phonemePair.second;
+
+        out << (phone.voiced ? "voiced" : "unvoiced") << "\n";
+
+        switch (phone.playback) {
+            case phoneme_Playback::ONESHOT:
+                out << "oneshot" << "\n";
+                break;
+            case phoneme_Playback::RANDOMLOOP:
+                out << "randomloop" << "\n";
+                break;
+            default:
+                std::cerr << "E: phone has unknown playback" << std::endl;
+                out.close();
+                return false;
+        }
+
+        out << "f " << "\n";
+        for (const auto& frame : phone.frames) {
+            out << "g " << frame.gain << "\nc\n";
+            for (const auto& coefficients : frame.coefficients) {
+                out << coefficients << " ";
+            }
+        }
+        out << "\n\n";
+    }
+
+
+    out.close();
+    return true;
+}
+
 
 int main(){
     // Read LPC
 
 
-    std::ifstream lpcFile("untitled.LPC");
+    std::ifstream lpcFile("batchaduz-48-burg.LPC");
     if (!lpcFile.is_open()){
         std::cerr << "Error opening lpc file" << std::endl;
         return 1;
@@ -484,8 +521,8 @@ int main(){
 
                 if (ImGui::Button(voicebankContainsComboItem ? "Overwrite" : "Save")) {
                     phoneme_Playback playback;
-                    if (sampleTypeIdx == 0) playback = phoneme_Playback::oneshot;
-                    if (sampleTypeIdx == 1) playback = phoneme_Playback::randomloop;
+                    if (sampleTypeIdx == 0) playback = phoneme_Playback::ONESHOT;
+                    if (sampleTypeIdx == 1) playback = phoneme_Playback::RANDOMLOOP;
                     
                     std::vector<frame_t> slicedFrames{segmentEnd - segmentStart + 1};
 
@@ -507,6 +544,11 @@ int main(){
                     voicebank.erase(phonemeNames[phonemeArpabetIdx]);
                 }
                 ImGui::EndDisabled();
+                
+                if (ImGui::Button("Write to file"))
+                {
+                    writeVoicebank(voicebank);
+                }
 
                 ImGui::End();
             }
