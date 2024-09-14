@@ -214,7 +214,7 @@ bool writeVoicebank(std::map<std::string, phoneme> voicebank) {
     std::ofstream out("out.frv");
 
     for (const auto& phonemePair : voicebank) {
-        out << "\" " << phonemePair.first << "\n"; // ARPABET
+        out << "\"" << phonemePair.first << "\n"; // ARPABET
         auto& phone = phonemePair.second;
 
         out << (phone.voiced ? "voiced" : "unvoiced") << "\n";
@@ -234,7 +234,7 @@ bool writeVoicebank(std::map<std::string, phoneme> voicebank) {
 
         out << "f " << "\n";
         for (const auto& frame : phone.frames) {
-            out << "g " << frame.gain << "\nc\n";
+            out << "g " << frame.gain << "\nc ";
             for (const auto& coefficients : frame.coefficients) {
                 out << coefficients << " ";
             }
@@ -524,10 +524,11 @@ int main(){
                     if (sampleTypeIdx == 0) playback = phoneme_Playback::ONESHOT;
                     if (sampleTypeIdx == 1) playback = phoneme_Playback::RANDOMLOOP;
                     
-                    std::vector<frame_t> slicedFrames{segmentEnd - segmentStart + 1};
+                    std::vector<frame_t> slicedFrames;
+                    slicedFrames.reserve(segmentEnd - segmentStart + 1);
 
                     for (size_t i = segmentStart; i <= segmentEnd; i++) {
-                        slicedFrames.push_back(lpcFrames[i]); // What's the difference between push_back and emplace_back?
+                        slicedFrames.push_back(lpcFrames[i]);
                     }
 
 
