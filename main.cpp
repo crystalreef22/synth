@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <map>
-#include <math.h>
+// #include <cmath>
 #include <mutex>
 #include <portaudio.h>
 #include "circular_buffer.hpp"
@@ -19,6 +19,8 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "misc/cpp/imgui_stdlib.h"
+#include "misc/cpp/imgui_stdlib.cpp"
 
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -125,6 +127,11 @@ private:
     int buzzI = 0;
 };
 
+enum class synth_thread_Status{
+    PAUSED,
+    LPC_BROWSER,
+    LPC_PLAYER
+};
 
 class synth_thread {
 public:
@@ -154,16 +161,30 @@ public:
     }
     
     void pause() {
-        paused.store(true);
+        status.store(synth_thread_Status::PAUSED);
     };
-    void resume() {
-        paused.store(false);
-    };
-    bool getPaused() {
-        return paused.load();
+    void startLPCBrowser() {
+        status.store(synth_thread_Status::LPC_BROWSER);
     }
-    void togglePaused() {
-        paused.store(!paused.load());
+    void startLPCPlayer() {
+        status.store(synth_thread_Status::LPC_PLAYER);
+    }
+    void toggleLPCBrowser() {
+        if (status.load() == synth_thread_Status::LPC_BROWSER) {
+            status.store(synth_thread_Status::PAUSED);
+        } else {
+            status.store(synth_thread_Status::LPC_BROWSER);
+        }
+    }
+    void toggleLPCPlayer() {
+        if (status.load() == synth_thread_Status::LPC_PLAYER) {
+            status.store(synth_thread_Status::PAUSED);
+        } else {
+            status.store(synth_thread_Status::LPC_PLAYER);
+        }
+    }
+    synth_thread_Status getStatus() {
+        return status.load();
     }
 
 private:
@@ -175,24 +196,33 @@ private:
         float localBuzz{buzz};
         float localPitch{pitch};
         while (!(stopStream.load())) {
-            if (newDataAvailable.load()) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                localLpcFrame = lpcFrame;
-                localBreath = breath;
-                localBuzz = buzz;
-                localPitch = pitch;
-                newDataAvailable.store(false);
-            }
-            if (paused.load()) {
-                sharedBuffer -> wait_put(0.0f);
-            } else {
-                sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
+            switch (status.load()) {
+                case synth_thread_Status::PAUSED:
+                    sharedBuffer -> wait_put(0.0f);
+                    break;
+                case synth_thread_Status::LPC_BROWSER:
+                    if (newDataAvailable.load()) {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        localLpcFrame = lpcFrame;
+                        localBreath = breath;
+                        localBuzz = buzz;
+                        localPitch = pitch;
+                        newDataAvailable.store(false);
+                    }
+                    sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
+                    break;
+                case synth_thread_Status::LPC_PLAYER:
+                    sharedBuffer -> wait_put(genSaw(tmpCounter, 0.5, 440));
+                    tmpCounter++;
+                    // not implemented
+                    break;
             }
         }
     }
 private:
     std::mutex mutex_;
-    std::atomic_bool paused{false};
+    // std::atomic_bool paused{false};
+    std::atomic<synth_thread_Status> status{synth_thread_Status::PAUSED};
     std::thread thread_;
     shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer;
     std::atomic_bool stopStream{false};
@@ -200,6 +230,7 @@ private:
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
     size_t maxFrameLength;
+    int tmpCounter{0};
 };
 
 enum class phoneme_Playback {ONESHOT, RANDOMLOOP};
@@ -210,21 +241,23 @@ struct phoneme {
     std::vector<frame_t> frames;
 };
 
-bool writeVoicebank(std::map<std::string, phoneme> voicebank) {
+bool writeVoicebank(const std::map<std::string, phoneme>& voicebank) {
     std::ofstream out("out.frv");
+
+    out << "Forestria Synthesizer Voicebank v0.1" << "\n";
 
     for (const auto& phonemePair : voicebank) {
         out << "\"" << phonemePair.first << "\n"; // ARPABET
         auto& phone = phonemePair.second;
 
-        out << (phone.voiced ? "voiced" : "unvoiced") << "\n";
+        out << (phone.voiced ? "vvoiced" : "vunvoiced") << "\n";
 
         switch (phone.playback) {
             case phoneme_Playback::ONESHOT:
-                out << "oneshot" << "\n";
+                out << "poneshot" << "\n";
                 break;
             case phoneme_Playback::RANDOMLOOP:
-                out << "randomloop" << "\n";
+                out << "prandomloop" << "\n";
                 break;
             default:
                 std::cerr << "E: phone has unknown playback" << std::endl;
@@ -232,19 +265,112 @@ bool writeVoicebank(std::map<std::string, phoneme> voicebank) {
                 return false;
         }
 
-        out << "f " << "\n";
+        out << "f" << "\n";
         for (const auto& frame : phone.frames) {
-            out << "g " << frame.gain << "\nc ";
+            out << "g" << frame.gain << "\nc";
             for (const auto& coefficients : frame.coefficients) {
                 out << coefficients << " ";
             }
+            out << "\n";
         }
-        out << "\n\n";
+        out << "end\n";
     }
 
+    out << "end file\n";
 
     out.close();
     return true;
+}
+bool readFrvLine(std::ifstream& in, std::string& line, char expectedChar) {
+    if (!std::getline(in, line)) return false;
+    if (line.size() == 0) return false; // line will be "" then
+    if (line[0] != expectedChar) return false;
+    line = line.erase(0,1);
+    return true;
+}
+std::optional<std::map<std::string, phoneme>> readVoicebank(const std::string& filename) {
+    std::map<std::string, phoneme> result;
+
+    std::ifstream in(filename);
+
+    std::string line;
+
+    if (!std::getline(in, line)) return std::nullopt;
+    if (line != "Forestria Synthesizer Voicebank v0.1") return std::nullopt;
+
+    // std::cout << "Yes, this is a frv file" << std::endl;
+
+    while (true) {
+        if (!readFrvLine(in, line, '"')) {
+            if (line == "end file") {
+                break;
+            }
+            return std::nullopt;
+        }
+        const std::string arpabetName{line};
+
+        if (!readFrvLine(in, line, 'v')) return std::nullopt;
+        const bool voiced = line == "voiced";
+        if (!voiced && line != "unvoiced") {
+            return std::nullopt;
+        }
+
+        if (!readFrvLine(in, line, 'p')) return std::nullopt;
+        phoneme_Playback playback;
+        if (line == "oneshot") {
+            playback = phoneme_Playback::ONESHOT;
+        } else if (line == "randomloop") {
+            playback = phoneme_Playback::RANDOMLOOP;
+        } else return std::nullopt;
+
+        // std::cout << "read \", v, p" << std::endl;
+
+        if (!readFrvLine(in, line, 'f')) return std::nullopt;
+
+        std::vector<frame_t> frames;
+
+        while (true) {
+            frame_t frame;
+            if (readFrvLine(in, line, 'g')) {
+                try {
+                    frame.gain = std::stof(line);
+                } catch (std::invalid_argument) {
+                    return std::nullopt;
+                } catch (std::out_of_range) {
+                    return std::nullopt;
+                }
+            } else if (line == "end") {
+                break;
+            } else {
+                // if end of file reached for some reason?
+                return std::nullopt;
+            }
+            // std::cout << "Got gain" << std::endl;
+            if (! readFrvLine(in, line, 'c')) return std::nullopt;
+            std::istringstream iss(line);
+            std::string s;
+            while (getline( iss, s, ' ' )) {
+                // std::cout << s << std::endl;
+                try {
+                    frame.coefficients.push_back(std::stof(s));
+                } catch (std::invalid_argument) {
+                    return std::nullopt;
+                } catch (std::out_of_range) {
+                    return std::nullopt;
+                }
+            }
+            //std::cout << "Got coefficients" << std::endl;
+        }
+
+        //std::cout << "Got frames" << std::endl;
+
+        result.insert_or_assign(arpabetName, phoneme{voiced, playback, frames});
+    }
+    
+
+
+    in.close();
+    return result;
 }
 
 
@@ -444,14 +570,19 @@ int main(){
             // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
             {
 
+                ImGui::Begin("File reader");
+                if (ImGui::Button("open out.frv")) {
+                    voicebank = readVoicebank("out.frv").value();
+                }
+                ImGui::End();
                 ImGui::Begin("LPC browser");                          // Create a window called "Hello, world!" and append into it.
                 ImGui::Text("Click and drag to edit value.\n"
                     "Hold SHIFT/ALT for faster/slower edit.\n"
                     "Double-click or CTRL+click to input value.");
 
 
-                if (ImGui::Button(synthThread.getPaused() ? "Resume" : "Pause")) {
-                    synthThread.togglePaused();
+                if (ImGui::Button(synthThread.getStatus() == synth_thread_Status::LPC_BROWSER ? "Stop" : "Start")) {
+                    synthThread.toggleLPCBrowser();
                 }
 
                 static int lpcFrameI;
@@ -551,6 +682,17 @@ int main(){
                     writeVoicebank(voicebank);
                 }
 
+                ImGui::End();
+
+                ImGui::Begin("Arpabet player");
+                ImGui::Text("Play a thing");
+                static std::string arpabetInputTest;
+                ImGui::InputText("One arpabet tone", &arpabetInputTest, ImGuiInputTextFlags_CharsUppercase);
+                if (ImGui::Button(synthThread.getStatus() == synth_thread_Status::LPC_PLAYER ? "Stop" : "Start")) {
+                    synthThread.toggleLPCPlayer();
+                }
+                ImGui::Text("I have not implemented this yet so");
+                ImGui::Text("it is just playing a sawtooth wave");
                 ImGui::End();
             }
 
