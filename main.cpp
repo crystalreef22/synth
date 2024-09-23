@@ -127,6 +127,14 @@ private:
     int buzzI = 0;
 };
 
+enum class phoneme_Playback {ONESHOT, RANDOMLOOP};
+
+struct phoneme_t {
+    bool voiced;
+    phoneme_Playback playback;
+    std::vector<frame_t> frames;
+};
+
 enum class synth_thread_Status{
     PAUSED,
     LPC_BROWSER,
@@ -151,11 +159,17 @@ public:
         }
     }
 
-    void update(const frame_t &lpcFrame, float breath, float buzz, float pitch) {
+    void updateBrowser(const frame_t &lpcFrame, float breath, float buzz, float pitch) {
         std::lock_guard<std::mutex> lock(mutex_);
         this->lpcFrame = lpcFrame;
         this->breath = breath;
         this->buzz = buzz;
+        this->pitch = pitch;
+        newDataAvailable.store(true);
+    }
+
+    void updatePlayer(const std::string phonemeName, float pitch) {
+        std::lock_guard<std::mutex> lock(mutex_);
         this->pitch = pitch;
         newDataAvailable.store(true);
     }
@@ -233,15 +247,7 @@ private:
     int tmpCounter{0};
 };
 
-enum class phoneme_Playback {ONESHOT, RANDOMLOOP};
-
-struct phoneme {
-    bool voiced;
-    phoneme_Playback playback;
-    std::vector<frame_t> frames;
-};
-
-bool writeVoicebank(const std::map<std::string, phoneme>& voicebank) {
+bool writeVoicebank(const std::map<std::string, phoneme_t>& voicebank) {
     std::ofstream out("out.frv");
 
     out << "Forestria Synthesizer Voicebank v0.1" << "\n";
@@ -288,8 +294,8 @@ bool readFrvLine(std::ifstream& in, std::string& line, char expectedChar) {
     line = line.erase(0,1);
     return true;
 }
-std::optional<std::map<std::string, phoneme>> readVoicebank(const std::string& filename) {
-    std::map<std::string, phoneme> result;
+std::optional<std::map<std::string, phoneme_t>> readVoicebank(const std::string& filename) {
+    std::map<std::string, phoneme_t> result;
 
     std::ifstream in(filename);
 
@@ -364,7 +370,7 @@ std::optional<std::map<std::string, phoneme>> readVoicebank(const std::string& f
 
         //std::cout << "Got frames" << std::endl;
 
-        result.insert_or_assign(arpabetName, phoneme{voiced, playback, frames});
+        result.insert_or_assign(arpabetName, phoneme_t{voiced, playback, frames});
     }
     
 
@@ -552,7 +558,7 @@ int main(){
         // NOT THREAD SAFE!!!!!!!!!
         synth_thread synthThread{&sharedBuffer, lpcFrames.size()};
 
-        std::map<std::string, phoneme> voicebank;
+        std::map<std::string, phoneme_t> voicebank;
 
         //------------------------------
         // MAIN LOOP
@@ -599,7 +605,7 @@ int main(){
                     buzz /= total;
                     breath /= total;
                 }
-                synthThread.update(lpcFrames[lpcFrameI], breath, buzz, pitch);
+                synthThread.updateBrowser(lpcFrames[lpcFrameI], breath, buzz, pitch);
 
 
                 ImGui::Separator();
@@ -663,7 +669,7 @@ int main(){
                     }
 
 
-                    voicebank.insert_or_assign(phonemeNames[phonemeArpabetIdx], phoneme{voiced, playback, slicedFrames});
+                    voicebank.insert_or_assign(phonemeNames[phonemeArpabetIdx], phoneme_t{voiced, playback, slicedFrames});
 
                     ++phonemeArpabetIdx %= phonemeNames.size();
                 }
