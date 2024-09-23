@@ -83,9 +83,9 @@ struct frame_t {
     float gain = 0;
 };
 
-class synth {
+class lpc_synth {
 public:
-    synth(size_t coefficientSize)
+    lpc_synth(size_t coefficientSize)
         : delayLine(coefficientSize, 0)
     {}
 
@@ -184,26 +184,26 @@ public:
         status.store(synth_thread_Status::LPC_PLAYER);
     }
     void toggleLPCBrowser() {
-        if (status.load() == synth_thread_Status::LPC_BROWSER) {
-            status.store(synth_thread_Status::PAUSED);
-        } else {
-            status.store(synth_thread_Status::LPC_BROWSER);
-        }
+        toggleStatus(synth_thread_Status::LPC_BROWSER);
     }
     void toggleLPCPlayer() {
-        if (status.load() == synth_thread_Status::LPC_PLAYER) {
-            status.store(synth_thread_Status::PAUSED);
+        toggleStatus(synth_thread_Status::LPC_PLAYER);
+    }
+    void toggleStatus(synth_thread_Status status) {
+        if (this->status.load() == status) {
+            this->status.store(synth_thread_Status::PAUSED);
         } else {
-            status.store(synth_thread_Status::LPC_PLAYER);
+            this->status.store(status);
         }
     }
+
     synth_thread_Status getStatus() {
         return status.load();
     }
 
 private:
     void threadFunction(){
-        synth mySynth(maxFrameLength);
+        lpc_synth mySynth(maxFrameLength);
 
         frame_t localLpcFrame{lpcFrame};
         float localBreath{breath};
