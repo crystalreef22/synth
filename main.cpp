@@ -143,9 +143,10 @@ enum class synth_thread_Status{
 
 class synth_thread {
 public:
-    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, size_t maxFrameLength)
+    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, size_t maxFrameLength, std::map<std::string, phoneme_t> voicebank)
         : sharedBuffer{sharedBuffer},
-        maxFrameLength{maxFrameLength}
+        maxFrameLength{maxFrameLength},
+        voicebank{voicebank}
     {
         thread_ = std::thread(&synth_thread::threadFunction, this);
     };
@@ -168,10 +169,11 @@ public:
         newDataAvailable.store(true);
     }
 
-    void updatePlayer(const std::string phonemeName, float pitch) {
+    void updatePlayer(const std::string& phonemeName, float pitch, std::map<std::string, phoneme_t> voicebank) {
         std::lock_guard<std::mutex> lock(mutex_);
         this->pitch = pitch;
-        newDataAvailable.store(true);
+        this->phonemeName = phonemeName;
+        this->voicebank = voicebank;
     }
     
     void pause() {
@@ -226,9 +228,35 @@ private:
                     sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
                     break;
                 case synth_thread_Status::LPC_PLAYER:
-                    sharedBuffer -> wait_put(genSaw(tmpCounter, 0.5, 440));
-                    tmpCounter++;
-                    // not implemented
+                    const phoneme_t phoneme = voicebank.at(phonemeName);
+                    std::cout << "got phoneme" << std::endl;
+                    if (phoneme.voiced) {
+                        breath = 0.15;
+                        buzz = 0.8;
+                    } else {
+                        breath = 0.95;
+                        buzz = 0;
+                    }
+                    size_t idx = 0;
+                    if (phoneme.playback == phoneme_Playback::ONESHOT) {
+                        std::cout << "oneshot"  << std::endl;
+                        size_t frameIndex = 0;
+                        do {
+                            sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(frameIndex), breath, buzz, pitch));
+                            idx++;
+                            frameIndex = idx / (SAMPLE_RATE / 20);
+                            if (frameIndex > phoneme.frames.size() - 1) {
+                                status.store(synth_thread_Status::PAUSED);
+                            }
+                        } while (status.load() == synth_thread_Status::LPC_PLAYER);
+                    } else if (phoneme.playback == phoneme_Playback::RANDOMLOOP) {
+                        std::cout << "randomloop"  << std::endl;
+                        std::cout << "frames size " << phoneme.frames.size() << std::endl;
+                        for (size_t i = 0; i < SAMPLE_RATE; i++) {
+                            sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(0), breath, buzz, pitch));
+                        }
+                        status.store(synth_thread_Status::PAUSED);
+                    }
                     break;
             }
         }
@@ -244,7 +272,8 @@ private:
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
     size_t maxFrameLength;
-    int tmpCounter{0};
+    std::string phonemeName;
+    std::map<std::string, phoneme_t> voicebank;
 };
 
 bool writeVoicebank(const std::map<std::string, phoneme_t>& voicebank) {
@@ -366,6 +395,7 @@ std::optional<std::map<std::string, phoneme_t>> readVoicebank(const std::string&
                 }
             }
             //std::cout << "Got coefficients" << std::endl;
+            frames.push_back(frame);
         }
 
         //std::cout << "Got frames" << std::endl;
@@ -556,9 +586,8 @@ int main(){
 
         int maxFrameI = lpcFrames.size(); // size_t to int
         // NOT THREAD SAFE!!!!!!!!!
-        synth_thread synthThread{&sharedBuffer, lpcFrames.size()};
-
         std::map<std::string, phoneme_t> voicebank;
+        synth_thread synthThread{&sharedBuffer, lpcFrames.size(), voicebank};
 
         //------------------------------
         // MAIN LOOP
@@ -692,13 +721,16 @@ int main(){
 
                 ImGui::Begin("Arpabet player");
                 ImGui::Text("Play a thing");
+                ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
                 static std::string arpabetInputTest;
                 ImGui::InputText("One arpabet tone", &arpabetInputTest, ImGuiInputTextFlags_CharsUppercase);
                 if (ImGui::Button(synthThread.getStatus() == synth_thread_Status::LPC_PLAYER ? "Stop" : "Start")) {
+                    std::cout << "pressed" << std::endl;
+                    synthThread.updatePlayer(arpabetInputTest, pitch, voicebank);
+                    std::cout << "update" << std::endl;
                     synthThread.toggleLPCPlayer();
+                    std::cout << "toggled" << std::endl;
                 }
-                ImGui::Text("I have not implemented this yet so");
-                ImGui::Text("it is just playing a sawtooth wave");
                 ImGui::End();
             }
 
