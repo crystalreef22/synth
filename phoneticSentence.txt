@@ -62,3 +62,59 @@ IF ANYOne can think of a phrase that sounds less ridiculous to say, please let m
 - If you messed up, just go back and correct the mistake, then continue
 
 
+NEW!!
+
+AA (laaaaaa)
+
+B (ball)
+AE (lab, bat)
+
+CH
+AH (abate, ability)
+
+D
+AO (board)
+
+DH (bathe, there)
+AW (towel, about)
+
+F
+AY (aiya)
+
+G
+EH (spec)
+
+HH
+ER (spider)
+
+JH (ajay
+EY (ajay)
+
+K
+IH (bit)
+
+L
+IY (peep)
+
+M
+OW (yellow)
+
+N
+OY (koi)
+
+NG (ping, annoying)
+UH (wood)
+
+P
+UW (poof)
+
+R	liquid
+S	fricative
+SH	fricative
+T	stop
+TH	fricative
+V	fricative
+W	semivowel
+Y	semivowel
+Z	fricative
+ZH	fricative
