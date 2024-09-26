@@ -228,8 +228,13 @@ private:
                     sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
                     break;
                 case synth_thread_Status::LPC_PLAYER:
-                    const phoneme_t phoneme = voicebank.at(phonemeName);
-                    std::cout << "got phoneme" << std::endl;
+                    auto search = voicebank.find(phonemeName);
+                    if (search == voicebank.end()) {
+                        std::cerr << "Unknown phoneme" << std::endl;
+                        status.store(synth_thread_Status::PAUSED);
+                        break;
+                    }
+                    const phoneme_t phoneme = search->second;
                     if (phoneme.voiced) {
                         breath = 0.15;
                         buzz = 0.8;
@@ -238,6 +243,7 @@ private:
                         buzz = 0;
                     }
                     size_t idx = 0;
+                    // TODO: catch error if frames contains no frame
                     if (phoneme.playback == phoneme_Playback::ONESHOT) {
                         std::cout << "oneshot"  << std::endl;
                         size_t frameIndex = 0;
