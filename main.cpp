@@ -85,6 +85,7 @@ struct frame_t {
 
 class lpc_synth {
 public:
+    lpc_synth() {}
     lpc_synth(size_t coefficientSize)
         : delayLine(coefficientSize, 0)
     {}
@@ -99,6 +100,17 @@ public:
         // ‣ p = number of coefficients per frame, k = coefficient index, n = output index
 
         size_t cSize = frame.coefficients.size();
+        if (cSize == 0) {
+            // Just make silence if no coefficients
+            return 0.0f;
+        }
+
+        if (delayLine.size() < cSize) {
+            delayLine.resize(cSize);
+            reset();
+            std::cout << "W: delayLine has been resized. Resetting because proper buffer resizing is not implemented." << std::endl;
+            std::cout << "Do resetShrink() to resize back to 0" << std::endl;
+        }
 
         float output = genBuzz(buzzI, breath, buzz, pitch);
         for(size_t i=0; i<cSize;i++){
@@ -113,9 +125,13 @@ public:
         return(std::max(-1.0f,std::min(output * sqrt(frame.gain),1.0f)));
     }
 
-    void reset(){
+    void reset() {
         count = 0;
         std::fill(delayLine.begin(), delayLine.end(), 0.0f);
+    }
+    void resetShrink() {
+        count = 0;
+        delayLine = std::vector<float>();
     }
 
 private:
@@ -143,9 +159,8 @@ enum class synth_thread_Status{
 
 class synth_thread {
 public:
-    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, size_t maxFrameLength, std::map<std::string, phoneme_t> voicebank)
+    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, std::map<std::string, phoneme_t> voicebank)
         : sharedBuffer{sharedBuffer},
-        maxFrameLength{maxFrameLength},
         voicebank{voicebank}
     {
         thread_ = std::thread(&synth_thread::threadFunction, this);
@@ -205,7 +220,7 @@ public:
 
 private:
     void threadFunction(){
-        lpc_synth mySynth(maxFrameLength);
+        lpc_synth mySynth;
 
         frame_t localLpcFrame{lpcFrame};
         float localBreath{breath};
@@ -277,7 +292,6 @@ private:
     std::atomic_bool newDataAvailable{false};
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
-    size_t maxFrameLength;
     std::string phonemeName;
     std::map<std::string, phoneme_t> voicebank;
 };
@@ -415,28 +429,24 @@ std::optional<std::map<std::string, phoneme_t>> readVoicebank(const std::string&
     return result;
 }
 
-
-int main(){
-    // Read LPC
-
-
-    std::ifstream lpcFile("batchaduz-48-burg.LPC");
+std::optional<std::vector<frame_t>> readLpc(std::string filename) {
+    std::ifstream lpcFile(filename);
     if (!lpcFile.is_open()){
         std::cerr << "Error opening lpc file" << std::endl;
-        return 1;
+        return std::nullopt;
     }
     std::string line;
 
     std::getline(lpcFile, line);
     if (line != "File type = \"ooTextFile\"") {
         std::cerr << "Does not seem to be a LPC file" << std::endl;
-        return 1;
+        return std::nullopt;
     }
 
     std::getline(lpcFile, line);
     if (line != "Object class = \"LPC 1\"") {
         std::cerr << "Does not seem to be a LPC file" << std::endl;
-        return 1;
+        return std::nullopt;
     }
 
     float lpcFrameLength{0.02f}; // if not specified
@@ -500,6 +510,23 @@ int main(){
         //std::cout << frame.coefficients[0] << std::endl;
         lpcFrames.push_back(frame);
         //std::cin.ignore();
+    }
+    return lpcFrames;
+}
+
+int main(int argc, char* argv[]){
+    // Read cli args
+    
+    std::vector<frame_t> lpcFrames;
+
+    std::optional<std::vector<frame_t>> maybeLpcFrames;
+    if (argc > 1) {
+        maybeLpcFrames = readLpc(argv[1]);
+    }
+    if (maybeLpcFrames == std::nullopt) {
+        std::cout << "No file or corrupt file opened on start" << std::endl;
+    } else {
+        lpcFrames = maybeLpcFrames.value();
     }
 
     //------------------------------
@@ -590,10 +617,9 @@ int main(){
 
     { // END SETUP
 
-        int maxFrameI = lpcFrames.size(); // size_t to int
-        // NOT THREAD SAFE!!!!!!!!!
         std::map<std::string, phoneme_t> voicebank;
-        synth_thread synthThread{&sharedBuffer, lpcFrames.size(), voicebank};
+        synth_thread synthThread{&sharedBuffer, voicebank};
+        
 
         //------------------------------
         // MAIN LOOP
@@ -626,21 +652,42 @@ int main(){
                     synthThread.toggleLPCBrowser();
                 }
 
+                // if no file opened yet
+                ImGui::BeginDisabled(lpcFrames.empty());
+
+                static bool browserFrameChanged = true; // make it update upon the first frame, so static and reset later
+
                 static int lpcFrameI;
-                ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, maxFrameI, "%d", ImGuiSliderFlags_AlwaysClamp);
-                ImGui::SameLine();ImGui::Text("max: %d", maxFrameI);
+                browserFrameChanged |= ImGui::DragInt("Frame #", &lpcFrameI, 1, 0, lpcFrames.size()-1, "%d", ImGuiSliderFlags_AlwaysClamp);
+            
+                ImGui::SameLine();ImGui::Text("max: %zu", lpcFrames.size()-1);
 
                 static float breath{0.1}; static float buzz{0.8}; static float pitch{150};
 
-                ImGui::SliderFloat("Buzz", &buzz, 0, 1);
-                ImGui::SliderFloat("Breath", &breath, 0, 1);
-                ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
+                browserFrameChanged |= ImGui::SliderFloat("Buzz", &buzz, 0, 1);
+                browserFrameChanged |= ImGui::SliderFloat("Breath", &breath, 0, 1);
+                browserFrameChanged |= ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
+
                 if (ImGui::Button("Normalize Buzz-Breath Ratio")) {
+                    browserFrameChanged = true;
                     float total = buzz + breath;
                     buzz /= total;
                     breath /= total;
                 }
-                synthThread.updateBrowser(lpcFrames[lpcFrameI], breath, buzz, pitch);
+
+                if (browserFrameChanged) {
+                    if (lpcFrames.size() > 0) {
+                        synthThread.updateBrowser(lpcFrames[lpcFrameI], breath, buzz, pitch);
+                    } else {
+                        synthThread.updateBrowser(frame_t(), breath, buzz, pitch);
+                        // empty frame_t
+                    }
+                }
+
+                browserFrameChanged = false;
+
+
+                ImGui::EndDisabled();
 
 
                 ImGui::Separator();
@@ -689,7 +736,7 @@ int main(){
 
                 
                 // Save phoneme button
-                ImGui::BeginDisabled(segmentStart > segmentEnd); // Disable if segment is illegal
+                ImGui::BeginDisabled(segmentStart > segmentEnd || lpcFrames.empty()); // Disable if segment is illegal or LPC file not opened
 
                 if (ImGui::Button(voicebankContainsComboItem ? "Overwrite" : "Save")) {
                     phoneme_Playback playback;
