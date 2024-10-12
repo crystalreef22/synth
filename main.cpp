@@ -149,6 +149,7 @@ struct phoneme_t {
     bool voiced;
     phoneme_Playback playback;
     std::vector<frame_t> frames;
+    float fps;
 };
 
 enum class synth_thread_Status{
@@ -265,16 +266,19 @@ private:
                         do {
                             sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(frameIndex), breath, buzz, pitch));
                             idx++;
-                            frameIndex = idx / (SAMPLE_RATE / 20);
+                            frameIndex = idx / (SAMPLE_RATE / phoneme.fps);
                             if (frameIndex > phoneme.frames.size() - 1) {
                                 status.store(synth_thread_Status::PAUSED);
                             }
-                        } while (status.load() == synth_thread_Status::LPC_PLAYER);
+                        } while (!stopStream.load() && status.load() == synth_thread_Status::LPC_PLAYER);
                     } else if (phoneme.playback == phoneme_Playback::RANDOMLOOP) {
                         std::cout << "randomloop"  << std::endl;
                         std::cout << "frames size " << phoneme.frames.size() << std::endl;
                         for (size_t i = 0; i < SAMPLE_RATE; i++) {
                             sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(0), breath, buzz, pitch));
+                            if (stopStream.load()) {
+                                break;
+                            }
                         }
                         status.store(synth_thread_Status::PAUSED);
                     }
@@ -420,7 +424,8 @@ std::optional<std::map<std::string, phoneme_t>> readVoicebank(const std::string&
 
         //std::cout << "Got frames" << std::endl;
 
-        result.insert_or_assign(arpabetName, phoneme_t{voiced, playback, frames});
+        result.insert_or_assign(arpabetName, phoneme_t{voiced, playback, frames, 200});
+        std::cout << "W: guessing frame fps to be 200" << std::endl;
     }
     
 
@@ -751,7 +756,8 @@ int main(int argc, char* argv[]){
                     }
 
 
-                    voicebank.insert_or_assign(phonemeNames[phonemeArpabetIdx], phoneme_t{voiced, playback, slicedFrames});
+                    voicebank.insert_or_assign(phonemeNames[phonemeArpabetIdx], phoneme_t{voiced, playback, slicedFrames, 200});
+                    std::cout << "W: guessing frame fps to be 200" << std::endl;
 
                     ++phonemeArpabetIdx %= phonemeNames.size();
                 }
