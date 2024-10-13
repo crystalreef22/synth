@@ -125,6 +125,15 @@ public:
         return(std::max(-1.0f,std::min(output * sqrt(frame.gain),1.0f)));
     }
 
+    float addSampleToBuffer(float sample) {
+        size_t cSize = delayLine.size();
+        if (++count >= cSize) count = 0;
+        delayLine[count] = sample;
+        buzzI++;
+
+        return sample;
+    }
+
     void reset() {
         count = 0;
         std::fill(delayLine.begin(), delayLine.end(), 0.0f);
@@ -185,10 +194,10 @@ public:
         newDataAvailable.store(true);
     }
 
-    void updatePlayer(const std::string& phonemeName, float pitch, std::map<std::string, phoneme_t> voicebank) {
+    void updatePlayer(const std::string& arpabetPhrase, float pitch, std::map<std::string, phoneme_t> voicebank) {
         std::lock_guard<std::mutex> lock(mutex_);
         this->pitch = pitch;
-        this->phonemeName = phonemeName;
+        this->arpabetPhrase = arpabetPhrase;
         this->voicebank = voicebank;
     }
     
@@ -244,44 +253,61 @@ private:
                     sharedBuffer -> wait_put(mySynth.getOutputSample(localLpcFrame, localBreath, localBuzz, localPitch));
                     break;
                 case synth_thread_Status::LPC_PLAYER:
-                    auto search = voicebank.find(phonemeName);
-                    if (search == voicebank.end()) {
-                        std::cerr << "Unknown phoneme" << std::endl;
-                        status.store(synth_thread_Status::PAUSED);
-                        break;
-                    }
-                    const phoneme_t phoneme = search->second;
-                    if (phoneme.voiced) {
-                        breath = 0.15;
-                        buzz = 0.8;
-                    } else {
-                        breath = 0.95;
-                        buzz = 0;
-                    }
-                    size_t idx = 0;
-                    // TODO: catch error if frames contains no frame
-                    if (phoneme.playback == phoneme_Playback::ONESHOT) {
-                        std::cout << "oneshot"  << std::endl;
-                        size_t frameIndex = 0;
-                        do {
-                            sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(frameIndex), breath, buzz, pitch));
-                            idx++;
-                            frameIndex = idx / (SAMPLE_RATE / phoneme.fps);
-                            if (frameIndex > phoneme.frames.size() - 1) {
-                                status.store(synth_thread_Status::PAUSED);
+                    std::istringstream phonemeNames(arpabetPhrase);
+                    std::string phonemeName;
+
+                    while (!stopStream.load() && status.load() == synth_thread_Status::LPC_PLAYER && phonemeNames >> phonemeName) {
+                        std::cout << "pn thing " << phonemeName <<std::endl;
+
+                        if (phonemeName == ".") {
+                            for (size_t i = 0; i < SAMPLE_RATE * 0.1; i++) {
+                                sharedBuffer -> wait_put(mySynth.addSampleToBuffer(0));
+                                if (stopStream.load()) {
+                                    break;
+                                }
                             }
-                        } while (!stopStream.load() && status.load() == synth_thread_Status::LPC_PLAYER);
-                    } else if (phoneme.playback == phoneme_Playback::RANDOMLOOP) {
-                        std::cout << "randomloop"  << std::endl;
-                        std::cout << "frames size " << phoneme.frames.size() << std::endl;
-                        for (size_t i = 0; i < SAMPLE_RATE; i++) {
-                            sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(0), breath, buzz, pitch));
-                            if (stopStream.load()) {
-                                break;
+                            continue;
+                        }
+
+                        auto search = voicebank.find(phonemeName);
+                        if (search == voicebank.end()) {
+                            std::cerr << "Unknown phoneme" << std::endl;
+                            status.store(synth_thread_Status::PAUSED);
+                            break;
+                        }
+                        const phoneme_t phoneme = search->second;
+                        if (phoneme.voiced) {
+                            breath = 0.15;
+                            buzz = 0.8;
+                        } else {
+                            breath = 0.95;
+                            buzz = 0;
+                        }
+                        size_t idx = 0;
+                        // TODO: catch error if frames contains no frame
+                        if (phoneme.playback == phoneme_Playback::ONESHOT) {
+                            std::cout << "oneshot"  << std::endl;
+                            size_t frameIndex = 0;
+                            do {
+                                sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(frameIndex), breath, buzz, pitch));
+                                idx++;
+                                frameIndex = idx / (SAMPLE_RATE / phoneme.fps);
+                                if (frameIndex > phoneme.frames.size() - 1) {
+                                    break;
+                                }
+                            } while (!stopStream.load() && status.load() == synth_thread_Status::LPC_PLAYER);
+                        } else if (phoneme.playback == phoneme_Playback::RANDOMLOOP) {
+                            std::cout << "randomloop"  << std::endl;
+                            std::cout << "frames size " << phoneme.frames.size() << std::endl;
+                            for (size_t i = 0; i < SAMPLE_RATE * 0.1; i++) {
+                                sharedBuffer -> wait_put(mySynth.getOutputSample(phoneme.frames.at(0), breath, buzz, pitch));
+                                if (stopStream.load()) {
+                                    break;
+                                }
                             }
                         }
-                        status.store(synth_thread_Status::PAUSED);
                     }
+                    status.store(synth_thread_Status::PAUSED);
                     break;
             }
         }
@@ -296,7 +322,7 @@ private:
     std::atomic_bool newDataAvailable{false};
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
-    std::string phonemeName;
+    std::string arpabetPhrase;
     std::map<std::string, phoneme_t> voicebank;
 };
 
@@ -780,7 +806,7 @@ int main(int argc, char* argv[]){
 
                 ImGui::Begin("Arpabet player");
                 ImGui::Text("Play a thing");
-                ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
+                browserFrameChanged |= ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
                 static std::string arpabetInputTest;
                 ImGui::InputText("One arpabet tone", &arpabetInputTest, ImGuiInputTextFlags_CharsUppercase);
                 if (ImGui::Button(synthThread.getStatus() == synth_thread_Status::LPC_PLAYER ? "Stop" : "Start")) {
