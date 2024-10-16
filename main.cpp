@@ -545,6 +545,46 @@ std::optional<std::vector<frame_t>> readLpc(std::string filename) {
     return lpcFrames;
 }
 
+std::map<std::string, std::string> readArpabetDict(const std::string& filename) {
+    std::ifstream dictfile(filename);
+    std::string line;
+    std::map<std::string, std::string> dict;
+    while (std::getline(dictfile, line)) {
+        size_t wordEndI{line.find(" ")};
+        std::string str{line.substr(wordEndI + 1)};
+
+        // Now remove numbers since they are not important now
+        std::string pronounciation{""};
+        for (char ch : str) {
+            if (!std::isdigit(ch)) { // Check if the character is not a digit
+                pronounciation += ch; // Append non-digit characters to the result
+            }
+        }
+        dict.insert_or_assign(line.substr(0, wordEndI), pronounciation);
+    }
+
+    // std::cout << "hellotest:" << dict.at("hello") << ";" << std::endl; // -> hellotest:HH AH L OW;
+    return dict;
+}
+
+std::string phraseToArpabet(const std::string& phrase, const std::map<std::string, std::string>& arpabetDict) {
+    std::istringstream iss(phrase);
+    
+    std::string word;
+    std::string result;
+    while (iss >> word) {
+        std::transform(word.begin(), word.end(), word.begin(), [](unsigned char c){ return std::tolower(c);}); // to lowercase
+
+        auto search = arpabetDict.find(word);
+        if (search != arpabetDict.end()) {
+            result += search->second + " ";
+        }
+    }
+    result.pop_back();
+    
+    return result;
+}
+
 int main(int argc, char* argv[]){
     // Read cli args
     
@@ -559,6 +599,8 @@ int main(int argc, char* argv[]){
     } else {
         lpcFrames = maybeLpcFrames.value();
     }
+    
+    std::map<std::string, std::string> arpabetDict = readArpabetDict("cmudict.dict");
 
     //------------------------------
     // IMGUI SETUP
@@ -808,7 +850,15 @@ int main(int argc, char* argv[]){
                 ImGui::Text("Play a thing");
                 browserFrameChanged |= ImGui::SliderFloat("Pitch", &pitch, 1, 1500);
                 static std::string arpabetInputTest;
-                ImGui::InputText("One arpabet tone", &arpabetInputTest, ImGuiInputTextFlags_CharsUppercase);
+                static std::string phrase;
+                
+                if (ImGui::InputText("Phrase", &phrase)) {
+                    arpabetInputTest = phraseToArpabet(phrase, arpabetDict);
+                }
+
+                
+
+                ImGui::InputText("Pronounciation", &arpabetInputTest, ImGuiInputTextFlags_CharsUppercase);
                 if (ImGui::Button(synthThread.getStatus() == synth_thread_Status::LPC_PLAYER ? "Stop" : "Start")) {
                     std::cout << "pressed" << std::endl;
                     synthThread.updatePlayer(arpabetInputTest, pitch, voicebank);
