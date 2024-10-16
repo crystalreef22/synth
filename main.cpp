@@ -169,7 +169,7 @@ enum class synth_thread_Status{
 
 class synth_thread {
 public:
-    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, std::map<std::string, phoneme_t> voicebank)
+    synth_thread(shared_circular_buffer<float, RINGBUFFER_SIZE>* sharedBuffer, std::unordered_map<std::string, phoneme_t> voicebank)
         : sharedBuffer{sharedBuffer},
         voicebank{voicebank}
     {
@@ -194,7 +194,7 @@ public:
         newDataAvailable.store(true);
     }
 
-    void updatePlayer(const std::string& arpabetPhrase, float pitch, std::map<std::string, phoneme_t> voicebank) {
+    void updatePlayer(const std::string& arpabetPhrase, float pitch, std::unordered_map<std::string, phoneme_t> voicebank) {
         std::lock_guard<std::mutex> lock(mutex_);
         this->pitch = pitch;
         this->arpabetPhrase = arpabetPhrase;
@@ -323,10 +323,10 @@ private:
     frame_t lpcFrame;
     float breath{0};float buzz{0};float pitch{0};
     std::string arpabetPhrase;
-    std::map<std::string, phoneme_t> voicebank;
+    std::unordered_map<std::string, phoneme_t> voicebank;
 };
 
-bool writeVoicebank(const std::map<std::string, phoneme_t>& voicebank) {
+bool writeVoicebank(const std::unordered_map<std::string, phoneme_t>& voicebank) {
     std::ofstream out("out.frv");
 
     out << "Forestria Synthesizer Voicebank v0.1" << "\n";
@@ -373,8 +373,8 @@ bool readFrvLine(std::ifstream& in, std::string& line, char expectedChar) {
     line = line.erase(0,1);
     return true;
 }
-std::optional<std::map<std::string, phoneme_t>> readVoicebank(const std::string& filename) {
-    std::map<std::string, phoneme_t> result;
+std::optional<std::unordered_map<std::string, phoneme_t>> readVoicebank(const std::string& filename) {
+    std::unordered_map<std::string, phoneme_t> result;
 
     std::ifstream in(filename);
 
@@ -648,7 +648,7 @@ int main(int argc, char* argv[]){
 
     { // END SETUP
 
-        std::map<std::string, phoneme_t> voicebank;
+        std::unordered_map<std::string, phoneme_t> voicebank;
         synth_thread synthThread{&sharedBuffer, voicebank};
         
 
