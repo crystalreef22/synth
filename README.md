@@ -6,24 +6,14 @@ This is an **unfinished** speech synthesizer made with C\+\+, [PortAudio](https:
 
 - You can't use this yet
 
-To compile this yourself, you need a C++ compiler (gcc, clang, mingw) and some build tools (make). Make sure [PortAudio](https://www.portaudio.com/) and glfw is installed so it can link properly. Just run `make` and it should work.
+To compile this yourself, you need a C++ compiler (gcc, clang, mingw) and some build tools (make). Make sure [PortAudio](https://www.portaudio.com/) and glfw is installed so it can link properly. I do not have any binaries right now
 
 ## FAQ
 
-### Can you think of a better name for this than "synth"?
+### What is this called
 
-I have an idea, and might rename this repository sometime later.
-
-- linear predictive coding &rarr; lin &rarr; forest
-- singing &rarr; aria &rarr; ria
-
-**forestria** *vocal synth*!
-
-### ^ Singing?
-
-As I said, this is unfinished
+**forestria**
 
 ### Why are you working on this?
 
 Because of *procrastination*.
-
